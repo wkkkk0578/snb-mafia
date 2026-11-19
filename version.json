@@ -1,8 +1,8 @@
 {
- "version": 1,
- "note": "첫 배포",
+ "version": 2,
+ "note": "설정을 PC별 위치로 (ID 겹침 방지)",
  "files": {
-  "mafia.py": "7ff183f84d4387887d2e3f06285354b44067689905caf88660468f32ba8f7c11",
+  "mafia.py": "caa85855887ad3799e82dd1a99f31e7b7b177cc3de66f7f0bd6b0f196da0e98d",
   "mafia_core.py": "4c9777187e803126fd344cd8b43c77294041a5018713c072a7821568c1725a65",
   "desk.py": "6a54610e3e7677c8156756a05346711dcc3382ed7a5aba16fcb8090fd2a7444b",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",

@@ -19,8 +19,10 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.3"
-SETTINGS = os.path.join(HERE, "settings.json")
+VERSION = "0.4"
+# 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
+SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
+OLD_SETTINGS = os.path.join(HERE, "settings.json")
 
 
 def build_no():
@@ -45,6 +47,7 @@ def read_json(path, default):
 
 def write_json(path, data):
     try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
     except Exception:
@@ -274,7 +277,9 @@ class App:
         from tkinter import font as tkfont
         self.tk = tk
         self.cfg = read_json(os.path.join(HERE, "config.json"), {})
-        self.st = read_json(SETTINGS, {})
+        self.st = read_json(SETTINGS, None)
+        if self.st is None:                      # 옛 위치(게임 폴더)의 설정은 닉네임 등만 가져오고 ID는 새로
+            self.st = {k: v for k, v in read_json(OLD_SETTINGS, {}).items() if k != "id"}
         self.root = tk.Tk()
         self.root.title("S&B 마피아")
         self.root.configure(bg=BG)
