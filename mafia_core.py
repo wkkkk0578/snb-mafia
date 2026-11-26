@@ -327,7 +327,7 @@ class Game:
     def _advance(self, now):
         ph = self.phase
         if ph == "intro":
-            self._begin_night(now)
+            self._begin_day(now)
         elif ph == "night":
             self._resolve_night()
             self._set_phase("morning", now)
@@ -358,7 +358,6 @@ class Game:
         return p.role in ("마피아", "의사", "경찰", "스파이")
 
     def _begin_night(self, now):
-        self.day += 1
         self.night, self.mafia_pick = {}, None
         self._set_phase("night", now)
         self.sys(f"🌙 {self.day}번째 밤이 되었습니다. 능력이 있는 사람은 대상을 고르세요.")
@@ -366,6 +365,7 @@ class Game:
             b.on_night()
 
     def _begin_day(self, now):
+        self.day += 1                                         # 낮이 오면 하루가 시작 (밤 N = 낮 N 다음 밤)
         self.ready, self.accused_today = set(), {}
         for k in self.heat:
             self.heat[k] *= 0.6
@@ -413,7 +413,7 @@ class Game:
     def _kill(self, pid, why):
         p = self.players[pid]
         p.alive = False
-        p._died = self.day
+        p._died, p._cause = self.day, why
         if self.reveal_on_death:
             p.revealed = True
         role = f" (직업: {p.role})" if self.reveal_on_death else ""
@@ -882,6 +882,8 @@ class Brain:
                 s += len([1 for a, ts in g.accused_today.items() if a == c]) * .5
                 if c in self.team():
                     s -= 99
+                if not g.players[c].ai and g.day <= 1 and not any(cl[1] == c for cl in g.claims):
+                    s -= 1.5                              # 첫 밤엔 사람보다 AI 를 먼저 (경찰이라 밝힌 사람은 예외)
                 pri.append((s, c))
             t = max(pri)[1]
             g.night_action(self.id, t)
@@ -936,7 +938,8 @@ class Brain:
         if g.phase != "day" or not self.p.alive:
             return
         self.spoke += 1
-        dead_today = [p.id for p in g.players.values() if not p.alive and getattr(p, "_died", None) == g.day]
+        dead_today = [p.id for p in g.players.values() if not p.alive and getattr(p, "_cause", "") == "mafia"
+                      and getattr(p, "_died", None) == g.day - 1]
         # 경찰: 마피아를 찾았으면 공개
         if self.role == "경찰":
             found = [t for t, r in self.truth.items() if r == "마피아" and g.players[t].alive]
@@ -1126,6 +1129,48 @@ class Brain:
 
 # ---------------------------------------------------------------- Claude API 스타일러 (선택)
 
+def http_reason(e, model, key):
+    """API 오류 → 사람이 읽을 이유 (+ 서버가 준 메시지)."""
+    detail = ""
+    try:
+        import json
+        detail = json.loads(e.read().decode("utf-8")).get("error", {}).get("message", "")[:90]
+    except Exception:
+        pass
+    base = {401: f"API 키가 올바르지 않아요 (입력된 키: {key[:12]}…, {len(key)}자)",
+            403: "API 키 권한이 없어요", 404: f"모델({model})을 찾을 수 없어요",
+            429: "요청이 너무 많아요(한도)", 400: "요청 오류", 529: "Claude 서버가 바빠요"}.get(e.code, f"HTTP {e.code}")
+    return base + (f" — {detail}" if detail else "")
+
+
+def clean_key(k):
+    """붙여넣다 섞인 공백·줄바꿈·따옴표·'x-api-key:' 같은 머리말 제거."""
+    k = (k or "").strip().strip('"').strip("'").strip()
+    for pre in ("x-api-key:", "ANTHROPIC_API_KEY=", "Bearer "):
+        if k.lower().startswith(pre.lower()):
+            k = k[len(pre):].strip()
+    return "".join(k.split())
+
+
+def test_key(api_key, model="claude-haiku-5-5"):
+    """키가 되는지 바로 확인 → (성공?, 설명)."""
+    import json
+    import urllib.error
+    import urllib.request
+    api_key = clean_key(api_key)
+    body = json.dumps({"model": model, "max_tokens": 5,
+                       "messages": [{"role": "user", "content": "안녕"}]}).encode("utf-8")
+    rq = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+        "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    try:
+        with urllib.request.urlopen(rq, timeout=10):
+            return True, "연결 성공! AI 들이 Claude 로 대화해요."
+    except urllib.error.HTTPError as e:
+        return False, http_reason(e, model, api_key)
+    except Exception as e:
+        return False, f"연결 실패: {type(e).__name__} (회사 네트워크에서 api.anthropic.com 이 막혔을 수 있어요)"
+
+
 RULES = ("[게임 규칙] 사내 동료들과 하는 온라인 마피아 게임. 직업: 마피아(밤에 1명 제거), 스파이(마피아 편, 밤에 1명 직업 확인), "
          "경찰(밤에 1명 마피아인지 조사), 의사(밤에 1명 보호), 기자(1회 직업 공개), 시민. "
          "낮에 토론 → 투표 → 최다 득표자 최후 변론 → 찬반 투표로 처형. 마피아 팀이 나머지 이상이면 마피아 승, 마피아 전멸이면 시민 승.")
@@ -1134,6 +1179,7 @@ RULES = ("[게임 규칙] 사내 동료들과 하는 온라인 마피아 게임.
 def make_claude_stylist(api_key, model="claude-haiku-5-5"):
     """AI 대사를 Claude 로 만든다 (페르소나 말투 + 게임 상황 반영). 실패하면 기본 문장.
     stylist.status 에 마지막 상태(ok/오류)를 남겨 방장 화면에 알릴 수 있다."""
+    api_key = clean_key(api_key)
     import json
     import threading
     import urllib.error
@@ -1188,9 +1234,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
                     stylist.status = "ok"
                     cb("".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text"))
                 except urllib.error.HTTPError as e:
-                    stylist.status = {401: "API 키가 올바르지 않아요", 403: "API 키 권한이 없어요",
-                                      404: f"모델({model})을 찾을 수 없어요", 429: "요청이 너무 많아요(한도)",
-                                      400: "요청 오류(크레딧 부족일 수 있어요)"}.get(e.code, f"HTTP {e.code}")
+                    stylist.status = http_reason(e, model, api_key)
                     cb(None)
                 except Exception as e:
                     stylist.status = f"연결 실패: {type(e).__name__}"

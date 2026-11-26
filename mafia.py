@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.5"
+VERSION = "0.6"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -254,7 +254,7 @@ class Host:
         if st and st != getattr(self, "_llm_told", ""):
             self._llm_told = st
             self.notices.append("🤖 Claude 연결 OK — AI 가 상황을 보고 말해요." if st == "ok"
-                                else f"🤖 Claude 연결 문제: {st} → 기본 대사로 진행해요. (config.json 의 claude_api_key 확인)")
+                                else f"🤖 Claude 연결 문제: {st} → 기본 대사로 진행해요. (시작 화면 맨 아래 '🤖 AI 대화'에서 키를 다시 넣어 주세요)")
         if g:
             g.tick(now)
             changed = g.version != self.sent_ver
@@ -397,7 +397,7 @@ class App:
 
     def api_key(self):
         """Claude API 키 — 이 PC 설정(%APPDATA%)에만 저장. config.json 에 적어 둔 것도 읽음."""
-        return (self.st.get("claude_api_key") or self.cfg.get("claude_api_key") or "").strip()
+        return core.clean_key(self.st.get("claude_api_key") or self.cfg.get("claude_api_key") or "")
 
     def ask_key(self):
         from tkinter import simpledialog
@@ -409,14 +409,35 @@ class App:
             initialvalue=self.st.get("claude_api_key", ""), show="*", parent=self.root)
         if k is None:
             return
-        self.st["claude_api_key"] = k.strip()
+        k = core.clean_key(k)
+        self.st["claude_api_key"] = k
         write_json(SETTINGS, self.st)
+        if k:
+            self.test_key_ui(k)
         nick, room = self.e_nick.get(), self.e_room.get()
         self.build_start()
         self.e_nick.delete(0, "end")
         self.e_nick.insert(0, nick)
         self.e_room.delete(0, "end")
         self.e_room.insert(0, room)
+
+    def test_key_ui(self, k):
+        """넣은 키로 바로 한 번 연결해 보고 결과를 알려줌."""
+        from tkinter import messagebox
+        res = {}
+
+        def run():
+            res["v"] = core.test_key(k, self.cfg.get("claude_model", "claude-haiku-5-5"))
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+
+        def wait():
+            if th.is_alive():
+                self.root.after(150, wait)
+                return
+            ok, msg = res.get("v", (False, "확인 실패"))
+            (messagebox.showinfo if ok else messagebox.showwarning)("Claude 연결 확인", msg, parent=self.root)
+        self.root.after(150, wait)
 
     def btn(self, parent, text, cmd, color, state=True, small=False):
         tk = self.tk
