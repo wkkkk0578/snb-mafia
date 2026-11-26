@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.7"
+VERSION = "0.8"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -272,10 +272,10 @@ class Host:
 
 BG, PANEL, LINE, TXT, SUB = "#16181f", "#20232d", "#2c3040", "#eef0f6", "#9097a8"
 ACCENT, RED, GOLD, NIGHT = "#7aa2ff", "#ff5d6c", "#ffd166", "#24264a"
-PHASE_TXT = {"intro": "🎲 직업 확인", "night": "🌙 밤", "morning": "🌅 아침", "day": "☀ 낮 토론",
+PHASE_TXT = {"intro": "🎲 직업 확인", "selfintro": "🙋 자기소개", "night": "🌙 밤", "morning": "🌅 아침", "day": "☀ 낮 토론",
              "vote": "🗳 투표", "defense": "🎤 최후 변론", "judge": "👍👎 찬반 투표", "verdict": "⚖ 결과",
              "end": "🏁 게임 끝"}
-PHASE_BG = {"night": NIGHT, "intro": "#2b2340", "morning": "#3a2f25", "day": "#24303f",
+PHASE_BG = {"night": NIGHT, "intro": "#2b2340", "selfintro": "#2b3a2f", "morning": "#3a2f25", "day": "#24303f",
             "vote": "#3a2430", "defense": "#45311f", "judge": "#3a2430", "verdict": "#3a2430", "end": "#23352b"}
 
 
@@ -917,6 +917,8 @@ class App:
                 cv.create_oval(cx - R - 5, cy - R - 5, cx + R + 5, cy + R + 5, outline=GOLD, width=3)
             if p.get("mp"):
                 cv.create_oval(cx - R - 9, cy - R - 9, cx + R + 9, cy + R + 9, outline=RED, width=2, dash=(4, 2))
+            if p.get("turn"):
+                cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#7be08b", width=3)
             if p.get("acc") and v and v["phase"] in ("defense", "judge"):
                 cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#ff9b3d", width=3)
             cv.create_oval(cx - R, cy - R, cx + R, cy + R, fill=fill, outline="#ffffff" if pid == self.me else "",
@@ -974,6 +976,8 @@ class App:
                 tag = role or (p.get("tag") if p.get("tag") in ("마피아", "마피아 아님") else None)
                 if p.get("acc") and v["phase"] in ("defense", "judge"):
                     tag = "🎤 변론"
+                if p.get("turn"):
+                    tag = "🙋 소개"
                 rows.append(dict(id=p["id"], n=p["n"], ch=p.get("ch"), ai=p["ai"], alive=p["a"],
                                  sub=tag or "", mafia=(role in core.MAFIA_TEAM) or tag == "마피아"))
                 if self.host and p["ai"]:
@@ -1135,6 +1139,13 @@ class App:
                 hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if self.st.get("size") == "hide" else "🗳 처형할 사람을 클릭하세요") \
                     + ("  (다시 클릭하면 변경)" if me.get("picked") else "")
                 btns = [("기권", lambda: self.do_act("vote", None), "#3a3f52")]
+        elif ph == "selfintro":
+            if me.get("myturn"):
+                hint = "🙋 내 차례! 채팅으로 한 줄 자기소개 해 주세요"
+            elif v.get("turn"):
+                hint = f"🙋 {v['turn']}님 자기소개 중… 첫인상을 잘 봐 두세요"
+            else:
+                hint = "🙋 자기소개 시간"
         elif ph == "defense":
             hint = ("🎤 당신의 최후 변론! 채팅으로 살려 달라고 호소하세요" if me.get("accused")
                     else f"🎤 {v.get('accused', '')}님의 최후 변론을 들어 주세요")

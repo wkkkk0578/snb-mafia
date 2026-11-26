@@ -1,11 +1,11 @@
 {
- "version": 5,
- "note": "AI 말 짧게·채팅 속도 조절",
+ "version": 6,
+ "note": "사회자 진행 자기소개",
  "files": {
-  "mafia.py": "937e933d7814c00c65471ad3c189a731dadadf14d6643d7519a0547d5cc9d976",
-  "mafia_core.py": "72f8ee8c347b8fafd26ce5c368a60b0965c4241891d4c0ff3481ccffa419cb76",
+  "mafia.py": "50e92fa1cf32ac512aa07920de504b3a644bf5d6886bb64628fdce90efe57c46",
+  "mafia_core.py": "b6a1c156db2a24c04df741d222fe3316bf8adccf72eaf43b5bf23fed8808c1a3",
   "desk.py": "6a54610e3e7677c8156756a05346711dcc3382ed7a5aba16fcb8090fd2a7444b",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "77e07d66efa562e4a432190d2210b9b9d5467165d48527402eb0bab1b47fb977"
+  "안내.txt": "8fb6ef74387dae26e39453469b43acff73b9972d30c71ad9173326623b1ac676"
  }
 }

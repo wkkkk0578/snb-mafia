@@ -57,6 +57,9 @@ GENERIC = {
     "dead": ["{d}님이 당했네요...", "{d}님 잘 가요. 범인 꼭 찾을게요."],
     "quiet": ["음... 좀 더 지켜볼게요.", "아직 확신이 없네요."],
     "vote": ["저는 {x}님 찍습니다.", "{x}님에게 투표할게요."],
+    "self_intro": ["안녕하세요, 잘 부탁드려요. 저는 평범한 시민입니다 ㅎㅎ", "반가워요! 오늘 마피아 꼭 잡아 봅시다."],
+    "intro_react": ["{x}님 소개가 너무 매끄러운데요? 준비해 오신 거 아니죠?ㅋㅋ", "흠.. {x}님 기억해 둘게요.",
+                    "{x}님 뭔가 숨기는 느낌인데요~", "{x}님 첫인상부터 수상한데? ㅋㅋ"],
     "night_mafia": ["오늘은 {x} 어때요?", "{x} 처리하죠."],
     "spy_contact": ["접선 완료. 스파이입니다. 같이 가요."],
     "last_defense": ["진짜 저 아니에요! 저 죽이면 시민만 손해예요.", "제 말 한 번만 믿어 주세요. 마피아는 따로 있어요.",
@@ -69,6 +72,8 @@ GENERIC = {
 # talk: 하루 발언 수, bold: 대담함(경찰 공개·가짜 경찰), trust: 남의 주장을 믿는 정도
 PERSONAS = {
     "셜록": dict(desc="논리적인 분석가. 존댓말, 차분하고 단정적인 말투", talk=3, bold=.6, trust=.6, t={
+        "self_intro": ['셜록입니다. 오늘도 논리로 범인을 찾겠습니다.', '관찰이 특기입니다. 다들 말 한마디 한마디 기록하겠습니다.'],
+        "intro_react": ['{x}님 소개에 군더더기가 없군요. 오히려 그게 걸립니다.'],
         "open": ["정보가 없는 첫날입니다. 각자 발언 패턴을 기록하겠습니다.", "첫날은 투표 성향을 보는 게 중요합니다."],
         "accuse": ["정황상 {x}님이 가장 수상합니다.", "{x}님 발언에 모순이 있습니다. 설명해 주시죠.", "확률적으로 {x}님이 마피아일 가능성이 높습니다."],
         "agree": ["{x}님 의심, 논리적으로 타당합니다.", "저도 같은 결론입니다. {x}님."],
@@ -77,6 +82,8 @@ PERSONAS = {
         "vote": ["결론: {x}님에게 투표합니다."],
         "quiet": ["아직 데이터가 부족합니다."]}),
     "불도저": dict(desc="성격 급한 돌격대장. 거친 반말, 짧고 공격적", talk=3, bold=.9, trust=.5, t={
+        "self_intro": ['불도저다. 수상하면 바로 민다. 끝.', '말 돌리는 놈은 바로 찍는다. 잘 부탁.'],
+        "intro_react": ['{x}, 소개가 왜 그렇게 짧아? 수상해.'],
         "open": ["다 필요 없고 수상한 놈 바로 잡는다.", "첫날부터 조용한 사람이 범인이야."],
         "accuse": ["{x} 너 마피아지? 딱 보여.", "{x} 바로 투표 간다. 이견 없지?", "야 {x}, 말 돌리지 마."],
         "agree": ["ㅇㅇ {x} 맞아. 가자.", "{x} 찍자. 시간 아까워."],
@@ -85,6 +92,8 @@ PERSONAS = {
         "vote": ["{x}. 끝."],
         "night_mafia": ["{x} 처리해. 시끄러워."]}),
     "쫄보": dict(desc="겁 많은 소심이. 말끝을 흐리고 ㅠㅠ를 자주 씀", talk=2, bold=.2, trust=.8, t={
+        "self_intro": ['아.. 안녕하세요.. 쫄보예요.. 살려만 주세요ㅠ', '저 진짜 착한 사람이에요..ㅠ 잘 부탁드려요..'],
+        "intro_react": ['{x}님.. 좀 무서워요..ㅠ'],
         "open": ["저.. 저는 그냥 시민이에요.. 잘 부탁드려요ㅠ", "무서워요.. 다들 착한 사람이죠..?"],
         "accuse": ["저.. 저는 {x}님이 좀 이상한 것 같아요..", "{x}님.. 혹시.. 아니죠..?ㅠ"],
         "agree": ["저도.. {x}님이 좀..", "{x}님 쪽으로.. 따라갈게요.."],
@@ -92,6 +101,8 @@ PERSONAS = {
         "dead": ["{d}님ㅠㅠ 너무 무서워요..", "히익.. {d}님이.."],
         "vote": ["{x}님.. 죄송해요.."]}),
     "깐족이": dict(desc="장난꾸러기. ㅋㅋ를 달고 살고 남을 놀림", talk=3, bold=.7, trust=.4, t={
+        "self_intro": ['깐족이 등장~ 마피아들 오늘 털릴 준비 됐지?ㅋㅋ', '안녕하세요 분위기 메이커 깐족이입니다ㅋㅋ'],
+        "intro_react": ['ㅋㅋ{x}님 소개하면서 눈 피한 거 나만 봄?'],
         "open": ["ㅋㅋㅋ 다들 표정 관리 잘하네", "마피아 손 들어보세요~ 아 안 드네ㅋㅋ"],
         "accuse": ["{x} 방금 동공지진 온 거 나만 봄?ㅋㅋ", "{x}님 연기 좀 어색한데요?ㅋㅋ"],
         "agree": ["ㅋㅋ {x} 몰이 탑승합니다", "{x} 각이다 ㅋㅋ"],
@@ -99,6 +110,8 @@ PERSONAS = {
         "dead": ["{d}님 RIP.. 좋은 사람이었다(?)"],
         "vote": ["{x} 픽 ㅋㅋ"]}),
     "김부장": dict(desc="자기 경험담을 늘어놓는 꼰대 부장님. '~하지', '~야' 하는 하대 말투", talk=2, bold=.7, trust=.5, t={
+        "self_intro": ['자자, 영업 30년 김부장이야. 다들 잘해 보자고.', '김부장이다. 내가 사람 보는 눈은 있어.'],
+        "intro_react": ['{x} 씨, 첫인상이 영 신입 같지가 않은데?'],
         "open": ["자자, 다들 집중하고. 회의 시작하지.", "내가 사회생활 30년인데, 눈빛 보면 다 알아."],
         "accuse": ["{x} 씨, 아까부터 태도가 영 별로야.", "내 경험상 {x} 같은 스타일이 꼭 일을 내."],
         "agree": ["음, {x} 씨 얘기는 일리가 있어.", "{x} 씨로 결재하지."],
@@ -106,6 +119,8 @@ PERSONAS = {
         "dead": ["{d} 씨가... 아까운 인재였는데."],
         "vote": ["{x} 씨. 이걸로 회의 마치지."]}),
     "하늘": dict(desc="감성적이고 여린 사람. 믿음과 배신에 민감, ㅠㅠ 사용", talk=2, bold=.4, trust=.8, t={
+        "self_intro": ['하늘이에요.. 우리 다 같이 끝까지 살아남아요ㅠ', '반가워요! 서로 믿었으면 좋겠어요..'],
+        "intro_react": ['{x}님 말투가 좀 차가운 것 같아요..ㅠ'],
         "open": ["다들 믿고 싶어요.. 우리 끝까지 같이 살아요ㅠ"],
         "accuse": ["{x}님 믿었는데.. 너무 수상해요ㅠㅠ", "{x}님 말할 때 마음이 불편해요.."],
         "agree": ["맞아요.. {x}님이 좀.."],
@@ -113,6 +128,8 @@ PERSONAS = {
         "dead": ["{d}님.. 아직 할 말이 많았는데ㅠㅠ"],
         "vote": ["{x}님.. 미안해요ㅠ"]}),
     "무념": dict(desc="극도로 과묵함. 한두 단어로만 말함", talk=1, bold=.5, trust=.6, t={
+        "self_intro": ['...무념.', '...잘 부탁.'],
+        "intro_react": ['...{x}. 기억.'],
         "open": ["...", "...지켜본다."],
         "accuse": ["...{x}.", "{x}. 수상."],
         "agree": ["{x}. 동의."],
@@ -121,6 +138,8 @@ PERSONAS = {
         "vote": ["{x}."],
         "quiet": ["..."]}),
     "도치": dict(desc="모두를 의심하는 의심병 환자. 반말", talk=3, bold=.6, trust=.2, t={
+        "self_intro": ['도치. 아무도 안 믿는다. 너희 다.', '의심하는 게 취미다. 잘 부탁은 안 함.'],
+        "intro_react": ['{x}, 벌써부터 수상해.'],
         "open": ["다 수상해. 진짜 다.", "아무도 안 믿어. 나 빼고."],
         "accuse": ["다 수상한데 특히 {x}.", "{x} 너무 조용해. 아니 너무 시끄러워. 아무튼 수상해."],
         "agree": ["{x}? 원래 의심하고 있었어."],
@@ -128,6 +147,8 @@ PERSONAS = {
         "dead": ["{d} 죽은 것도 연출 아냐?"],
         "vote": ["일단 {x}."]}),
     "지우": dict(desc="신조어를 쓰는 MZ 신입. 'ㄹㅇ', 'ㅇㅈ', '킹받네' 같은 말투", talk=2, bold=.6, trust=.5, t={
+        "self_intro": ['ㅎㅇ 지우예요 ㄹㅇ 찐시민임ㅋㅋ', '안녕하세요 막내 지우입니당 잘 부탁드려요'],
+        "intro_react": ['{x}님 소개 킹받게 완벽하네요ㅋㅋ'],
         "open": ["ㅎㅇㅎㅇ 저 시민임 ㄹㅇ", "다들 텐션 왜 이렇게 낮아요"],
         "accuse": ["{x}님 솔직히 킹받게 수상함", "{x}님 말투 완전 마피아 바이브인데"],
         "agree": ["{x} ㅇㅈ", "{x}님 쪽 투표 ㄱㄱ"],
@@ -135,6 +156,8 @@ PERSONAS = {
         "dead": ["{d}님 ㅠ 너무 빨리 가셨다"],
         "vote": ["{x} ㄱ"]}),
     "평화": dict(desc="싸움을 말리는 평화주의자. 부드러운 존댓말, 근거를 강조", talk=2, bold=.3, trust=.7, t={
+        "self_intro": ['평화입니다. 다들 차분하게, 근거로 이야기해요.', '반갑습니다. 싸우지 말고 범인만 찾아요.'],
+        "intro_react": ['{x}님 소개 좋네요. 근데 조금만 더 지켜볼게요.'],
         "open": ["다들 진정하고 근거 중심으로 얘기해봐요."],
         "accuse": ["싸우지 말고요, 근거로 보면 {x}님이 제일 걸려요.", "차분히 보면 {x}님 쪽이 아쉬워요."],
         "agree": ["{x}님 얘기, 근거가 괜찮네요. 동의해요."],
@@ -167,9 +190,11 @@ INTENT_DESC = {
     "judge_yes": "{x}의 처형에 찬성한다고 짧게 말하기",
     "judge_no": "{x}의 처형에 반대한다고 짧게 말하기",
     "reply": "방금 {x}이(가) 한 말에 대답하기: \"{q}\"",
+    "self_intro": "사회자가 부른 내 자기소개 차례: 내 캐릭터답게 가볍게 한 줄 자기소개 (직업은 절대 밝히지 말 것, 마피아면 시민인 척)",
+    "intro_react": "방금 {x}이(가) 한 자기소개를 장난스럽게 살짝 의심하거나 놀리는 한마디",
 }
 
-PHASE_KO = {"intro": "직업 확인", "night": "밤", "morning": "아침", "day": "낮 토론", "vote": "투표",
+PHASE_KO = {"intro": "직업 확인", "selfintro": "자기소개", "night": "밤", "morning": "아침", "day": "낮 토론", "vote": "투표",
             "defense": "최후 변론", "judge": "찬반 투표", "verdict": "결과 발표", "end": "게임 끝"}
 
 
@@ -188,10 +213,10 @@ def clean_line(line, name):
     return line
 
 # 단계별 시간(초)
-TIMES = dict(intro=8, night=30, morning=7, day=100, vote=25, defense=20, judge=12, verdict=7)
-FAST = dict(intro=3, night=8, morning=4, day=20, vote=10, defense=6, judge=5, verdict=4)   # 살아있는 사람이 없을 때
+TIMES = dict(intro=8, selfintro=90, night=30, morning=7, day=100, vote=25, defense=20, judge=12, verdict=7)
+FAST = dict(intro=3, selfintro=12, night=8, morning=4, day=20, vote=10, defense=6, judge=5, verdict=4)   # 살아있는 사람이 없을 때
 MAX_LEN = 40          # AI 한 마디 최대 글자 수
-DIRECT = ("reply", "defend", "last_defense", "counter", "claim_mafia", "claim_clear")   # 먼저 내보낼 말
+DIRECT = ("reply", "defend", "last_defense", "counter", "claim_mafia", "claim_clear", "self_intro")   # 먼저 내보낼 말
 
 
 class Player:
@@ -229,6 +254,7 @@ class Game:
         self.claims = []                                     # (day, 주장자, 대상, 'mafia'|'clear')
         self.pending = []                                    # (시각, 순번, fn)
         self.used = {}                                       # AI별 최근 쓴 문장 틀
+        self.intro_order, self.intro_i, self.intro_tok, self.intro_cur = [], -1, 0, None   # 자기소개 순서
         self.accused, self.judge = None, {}                  # 최후 변론 대상 / 찬반 (pid → True/False)
         self.outq, self.next_ai_slot, self.ai_last, self.ai_post_t = [], 0.0, {}, 0.0   # AI 말 대기열 · 다음 말 가능 시각 · AI별 마지막 말
         self.llm_busy = 0
@@ -365,6 +391,9 @@ class Game:
     def _advance(self, now):
         ph = self.phase
         if ph == "intro":
+            self._begin_selfintro(now)
+        elif ph == "selfintro":
+            self.sys("🗣 자기소개 끝! 이제 소개를 곱씹으며 서로 의심해 보세요.")
             self._begin_day(now)
         elif ph == "night":
             self._resolve_night()
@@ -418,6 +447,55 @@ class Game:
         self.sys("🗳 투표 시간! 처형할 사람을 고르세요. (기권 가능)")
         for b in self._live_brains():
             b.on_vote()
+
+    def _begin_selfintro(self, now):
+        self.intro_order = [p.id for p in self.alive_list()]
+        self.rng.shuffle(self.intro_order)
+        self.intro_i = -1
+        self._set_phase("selfintro", now)
+        self.deadline = now + min(self._dur("selfintro"), 4 + 10 * len(self.intro_order))
+        self.sys("🙋 사회자: 본격적으로 시작하기 전에, 한 명씩 돌아가며 자기소개 해 볼까요? 이름 불리면 한 줄로!")
+        self.schedule(2.5, self._next_intro)
+
+    def _next_intro(self):
+        """사회자가 다음 사람을 부름."""
+        if self.phase != "selfintro":
+            return
+        self.intro_i += 1
+        self.intro_tok += 1
+        tok = self.intro_tok
+        if self.intro_i >= len(self.intro_order):
+            self.intro_cur = None
+            self.deadline = min(self.deadline, self.now + 2)
+            return
+        pid = self.intro_order[self.intro_i]
+        self.intro_cur = pid
+        p = self.players[pid]
+        self.sys(f"👉 {p.name}님, 자기소개 부탁해요!")
+        if p.ai:
+            self.schedule(self.rng.uniform(1.2, 2.2), lambda: self.phase == "selfintro" and self.ai_line(pid, "self_intro"))
+            self.schedule(6.5, lambda: self.intro_tok == tok and self._after_intro(pid))
+        else:
+            self.schedule(12, lambda: self.intro_tok == tok and self._intro_timeout(pid))
+        self.version += 1
+
+    def _intro_timeout(self, pid):
+        if self.phase == "selfintro":
+            self.sys(f"⏱ {self.name(pid)}님은 수줍음이 많으시네요~ 다음 분!")
+            self._next_intro()
+
+    def _after_intro(self, pid):
+        """소개가 끝나면 가끔 AI 하나가 살짝 의심 → 다음 사람."""
+        if self.phase != "selfintro":
+            return
+        p = self.players[pid]
+        react = [b for b in self._live_brains() if b.id != pid]
+        if react and self.rng.random() < (0.5 if not p.ai else 0.25):
+            b = self.rng.choice(react)
+            self.ai_line(b.id, "intro_react", x=pid)
+            self.schedule(3.5, self._next_intro)
+        else:
+            self.schedule(0.8, self._next_intro)
 
     def _begin_defense(self, now):
         self._set_phase("defense", now)
@@ -646,6 +724,12 @@ class Game:
         self._analyze(pid, text)
         if not p.ai:
             self.next_ai_slot = max(self.next_ai_slot, self.now + 1.8)   # 사람 말 뒤엔 잠깐 숨 고르기
+            if self.phase == "selfintro":
+                if pid == self.intro_cur:
+                    self.intro_tok += 1
+                    tok = self.intro_tok
+                    self.schedule(2.0, lambda: self.intro_tok == tok and self._after_intro(pid))
+                return
             self._call_ai(pid, text)
         return True
 
@@ -670,6 +754,8 @@ class Game:
         return out
 
     def _analyze(self, pid, text):
+        if self.phase == "selfintro":
+            return
         who = self.mentions(text, pid)
         claim = bool(CLAIM_RE.search(text))
         acc = any(w in text for w in ACCUSE_W)
@@ -794,6 +880,7 @@ class Game:
             rows.append(dict(id=i, n=p.name, ai=p.ai, a=p.alive, c=p.color, r=role, tag=tag, ch=p.ch,
                              v=tally.get(i, 0), voted=i in (self.judge if self.phase == "judge" else self.votes),
                              rd=i in self.ready, acc=(i == self.accused),
+                             turn=(self.phase == "selfintro" and i == self.intro_cur),
                              mp=(self.mafia_pick == i and pid in mafia_ids and self.phase == "night")))
         vis = []
         for m in self.chat:
@@ -807,7 +894,8 @@ class Game:
         v = dict(phase=self.phase, day=self.day, remain=max(0, int(self.deadline - now + .99)),
                  total=int(self._dur(self.phase)) if self.phase != "end" else 0,
                  players=rows, chat=vis[-80:], winner=self.winner, plan=plan_text(len(self.order)),
-                 accused=self.name(self.accused) if self.accused else "")
+                 accused=self.name(self.accused) if self.accused else "",
+                 turn=self.name(self.intro_cur) if self.phase == "selfintro" and self.intro_cur else "")
         if me:
             act = None
             if self.phase == "night" and self._can_act(me):
@@ -823,7 +911,7 @@ class Game:
                            pick=self.night.get(pid) if self.phase == "night" else self.votes.get(pid),
                            picked=(pid in self.night) if self.phase == "night" else (pid in self.votes),
                            ready=pid in self.ready, mchat=pid in mafia_ids, judge=self.judge.get(pid),
-                           accused=pid == self.accused,
+                           accused=pid == self.accused, myturn=(self.phase == "selfintro" and pid == self.intro_cur),
                            can_chat=(ended or not me.alive or ((self.phase != "night" or pid in mafia_ids)
                                                               and (self.phase != "defense" or pid == self.accused))))
         return v
