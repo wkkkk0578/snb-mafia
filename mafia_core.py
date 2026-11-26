@@ -47,123 +47,110 @@ def plan_text(n):
 # ---------------------------------------------------------------- 페르소나
 
 GENERIC = {
-    "open": ["첫날이라 정보가 없네요. 다들 한마디씩 해봐요.", "일단 말 많은 사람부터 지켜볼게요."],
-    "accuse": ["저는 {x}님이 수상해요.", "{x}님 아까부터 좀 이상하지 않아요?"],
-    "agree": ["저도 {x}님 쪽이 걸려요.", "{x}님 얘기 나온 거 동의합니다."],
-    "defend": ["저 아니에요. 저 시민이에요.", "왜 저를 의심하세요? 근거가 없잖아요."],
-    "claim_mafia": ["저 경찰입니다. 어젯밤 {x}님 조사했는데 마피아예요!", "경찰입니다. {x}님 마피아 확정이에요. 투표해 주세요."],
-    "claim_clear": ["경찰인데요, {x}님은 마피아 아닙니다. 다른 데 보세요."],
-    "counter": ["잠깐, 진짜 경찰은 저예요. {x}님 가짜 경찰입니다!"],
-    "dead": ["{d}님이 당했네요...", "{d}님 잘 가요. 범인 꼭 찾을게요."],
-    "quiet": ["음... 좀 더 지켜볼게요.", "아직 확신이 없네요."],
-    "vote": ["저는 {x}님 찍습니다.", "{x}님에게 투표할게요."],
-    "self_intro": ["안녕하세요, 잘 부탁드려요. 저는 평범한 시민입니다 ㅎㅎ", "반가워요! 오늘 마피아 꼭 잡아 봅시다."],
-    "intro_react": ["{x}님 소개가 너무 매끄러운데요? 준비해 오신 거 아니죠?ㅋㅋ", "흠.. {x}님 기억해 둘게요.",
-                    "{x}님 뭔가 숨기는 느낌인데요~", "{x}님 첫인상부터 수상한데? ㅋㅋ"],
-    "night_mafia": ["오늘은 {x} 어때요?", "{x} 처리하죠."],
-    "spy_contact": ["접선 완료. 스파이입니다. 같이 가요."],
-    "last_defense": ["진짜 저 아니에요! 저 죽이면 시민만 손해예요.", "제 말 한 번만 믿어 주세요. 마피아는 따로 있어요.",
-                     "저를 처형하면 내일 아침에 후회하실 거예요.", "반대 눌러 주세요. 저 시민 맞습니다."],
-    "judge_yes": ["찬성. 미안하지만 보내자.", "저는 찬성할게요."],
-    "judge_no": ["저는 반대요. 아직 확신이 없어요.", "반대! 너무 성급해요."],
-    "reply": ["음.. 그건 좀 더 지켜봐야 할 것 같아요.", "글쎄요, 저도 아직 모르겠어요.", "저한테 왜요? ㅎㅎ"],
+    "open": ["첫날이라 아직 감이 없네요", "일단 다들 한마디씩 해봐요"],
+    "accuse": ["{x}님이 좀 걸려요", "{x}님 아까 말이 좀 애매했어요"],
+    "agree": ["저도 {x}님 쪽이요", "{x}님 얘기 일리 있네요"],
+    "ask": ["{x}님은 누구 의심해요?", "{x}님 생각은 어때요?", "{x}님 아까 그건 왜 그런 거예요?"],
+    "defend": ["저 아니에요", "왜 저요? 근거 있어요?"],
+    "claim_mafia": ["저 경찰이에요. {x}님 마피아 나왔어요", "경찰입니다. {x}님 마피아예요"],
+    "claim_clear": ["저 경찰인데 {x}님은 마피아 아니에요"],
+    "counter": ["제가 진짜 경찰이에요. {x}님 거짓말이에요"],
+    "dead": ["{d}님 당했네요..", "아 {d}님 ㅠ"],
+    "quiet": ["아직 잘 모르겠네요", "좀 더 들어볼게요"],
+    "vote": ["저는 {x}님 찍을게요", "{x}님으로 갈게요"],
+    "self_intro": ["안녕하세요 잘 부탁드려요", "반가워요 재밌게 해봐요"],
+    "intro_react": ["{x}님 반가워요 ㅎㅎ", "{x}님 기억해 둘게요"],
+    "night_mafia": ["오늘은 {x} 어때요?", "{x} 가죠"],
+    "spy_contact": ["저 스파이예요. 같이 가요"],
+    "last_defense": ["저 진짜 아니에요. 반대 눌러 주세요", "저 시민이에요. 저 죽으면 손해예요", "마피아는 따로 있어요. 믿어 주세요"],
+    "judge_yes": ["찬성할게요", "아쉽지만 찬성"],
+    "judge_no": ["저는 반대요", "아직 확신 없어서 반대"],
+    "reply": ["음 아직 잘 모르겠어요", "글쎄요 좀 더 볼게요"],
 }
 
-# talk: 하루 발언 수, bold: 대담함(경찰 공개·가짜 경찰), trust: 남의 주장을 믿는 정도
+# 평범한 회사 동료들. 성격은 살짝만 (과장된 캐릭터 연기 X)
+# talk: 하루 잡담 수, bold: 대담함(경찰 공개·가짜 경찰), trust: 남의 주장을 믿는 정도
 PERSONAS = {
-    "셜록": dict(desc="논리적인 분석가. 존댓말, 차분하고 단정적인 말투", talk=3, bold=.6, trust=.6, t={
-        "self_intro": ['셜록입니다. 오늘도 논리로 범인을 찾겠습니다.', '관찰이 특기입니다. 다들 말 한마디 한마디 기록하겠습니다.'],
-        "intro_react": ['{x}님 소개에 군더더기가 없군요. 오히려 그게 걸립니다.'],
-        "open": ["정보가 없는 첫날입니다. 각자 발언 패턴을 기록하겠습니다.", "첫날은 투표 성향을 보는 게 중요합니다."],
-        "accuse": ["정황상 {x}님이 가장 수상합니다.", "{x}님 발언에 모순이 있습니다. 설명해 주시죠.", "확률적으로 {x}님이 마피아일 가능성이 높습니다."],
-        "agree": ["{x}님 의심, 논리적으로 타당합니다.", "저도 같은 결론입니다. {x}님."],
-        "defend": ["저를 의심할 근거가 부족합니다. 제 발언을 다시 보시죠.", "감정적 판단은 마피아만 이롭게 합니다. 저는 시민입니다."],
-        "dead": ["{d}님이 제거됐군요. 마피아가 누구를 두려워했는지가 단서입니다."],
-        "vote": ["결론: {x}님에게 투표합니다."],
-        "quiet": ["아직 데이터가 부족합니다."]}),
-    "불도저": dict(desc="성격 급한 돌격대장. 거친 반말, 짧고 공격적", talk=3, bold=.9, trust=.5, t={
-        "self_intro": ['불도저다. 수상하면 바로 민다. 끝.', '말 돌리는 놈은 바로 찍는다. 잘 부탁.'],
-        "intro_react": ['{x}, 소개가 왜 그렇게 짧아? 수상해.'],
-        "open": ["다 필요 없고 수상한 놈 바로 잡는다.", "첫날부터 조용한 사람이 범인이야."],
-        "accuse": ["{x} 너 마피아지? 딱 보여.", "{x} 바로 투표 간다. 이견 없지?", "야 {x}, 말 돌리지 마."],
-        "agree": ["ㅇㅇ {x} 맞아. 가자.", "{x} 찍자. 시간 아까워."],
-        "defend": ["나? 웃기지 마. 나 시민이야.", "날 의심할 시간에 진짜 범인이나 찾아."],
-        "dead": ["{d} 당했네. 마피아 이것들 각오해."],
-        "vote": ["{x}. 끝."],
-        "night_mafia": ["{x} 처리해. 시끄러워."]}),
-    "쫄보": dict(desc="겁 많은 소심이. 말끝을 흐리고 ㅠㅠ를 자주 씀", talk=2, bold=.2, trust=.8, t={
-        "self_intro": ['아.. 안녕하세요.. 쫄보예요.. 살려만 주세요ㅠ', '저 진짜 착한 사람이에요..ㅠ 잘 부탁드려요..'],
-        "intro_react": ['{x}님.. 좀 무서워요..ㅠ'],
-        "open": ["저.. 저는 그냥 시민이에요.. 잘 부탁드려요ㅠ", "무서워요.. 다들 착한 사람이죠..?"],
-        "accuse": ["저.. 저는 {x}님이 좀 이상한 것 같아요..", "{x}님.. 혹시.. 아니죠..?ㅠ"],
-        "agree": ["저도.. {x}님이 좀..", "{x}님 쪽으로.. 따라갈게요.."],
-        "defend": ["저 아니에요ㅠㅠ 진짜예요..", "왜 저예요ㅠ 저 아무것도 안 했어요.."],
-        "dead": ["{d}님ㅠㅠ 너무 무서워요..", "히익.. {d}님이.."],
-        "vote": ["{x}님.. 죄송해요.."]}),
-    "깐족이": dict(desc="장난꾸러기. ㅋㅋ를 달고 살고 남을 놀림", talk=3, bold=.7, trust=.4, t={
-        "self_intro": ['깐족이 등장~ 마피아들 오늘 털릴 준비 됐지?ㅋㅋ', '안녕하세요 분위기 메이커 깐족이입니다ㅋㅋ'],
-        "intro_react": ['ㅋㅋ{x}님 소개하면서 눈 피한 거 나만 봄?'],
-        "open": ["ㅋㅋㅋ 다들 표정 관리 잘하네", "마피아 손 들어보세요~ 아 안 드네ㅋㅋ"],
-        "accuse": ["{x} 방금 동공지진 온 거 나만 봄?ㅋㅋ", "{x}님 연기 좀 어색한데요?ㅋㅋ"],
-        "agree": ["ㅋㅋ {x} 몰이 탑승합니다", "{x} 각이다 ㅋㅋ"],
-        "defend": ["나ㅋㅋ? 나 같은 시민이 어딨다고", "ㅋㅋ 억울하다 억울해"],
-        "dead": ["{d}님 RIP.. 좋은 사람이었다(?)"],
-        "vote": ["{x} 픽 ㅋㅋ"]}),
-    "김부장": dict(desc="자기 경험담을 늘어놓는 꼰대 부장님. '~하지', '~야' 하는 하대 말투", talk=2, bold=.7, trust=.5, t={
-        "self_intro": ['자자, 영업 30년 김부장이야. 다들 잘해 보자고.', '김부장이다. 내가 사람 보는 눈은 있어.'],
-        "intro_react": ['{x} 씨, 첫인상이 영 신입 같지가 않은데?'],
-        "open": ["자자, 다들 집중하고. 회의 시작하지.", "내가 사회생활 30년인데, 눈빛 보면 다 알아."],
-        "accuse": ["{x} 씨, 아까부터 태도가 영 별로야.", "내 경험상 {x} 같은 스타일이 꼭 일을 내."],
-        "agree": ["음, {x} 씨 얘기는 일리가 있어.", "{x} 씨로 결재하지."],
-        "defend": ["어허, 날 의심해? 내가 이 회사에서 몇 년인데.", "나는 아니야. 보고서로 증명할 수도 있어."],
-        "dead": ["{d} 씨가... 아까운 인재였는데."],
-        "vote": ["{x} 씨. 이걸로 회의 마치지."]}),
-    "하늘": dict(desc="감성적이고 여린 사람. 믿음과 배신에 민감, ㅠㅠ 사용", talk=2, bold=.4, trust=.8, t={
-        "self_intro": ['하늘이에요.. 우리 다 같이 끝까지 살아남아요ㅠ', '반가워요! 서로 믿었으면 좋겠어요..'],
-        "intro_react": ['{x}님 말투가 좀 차가운 것 같아요..ㅠ'],
-        "open": ["다들 믿고 싶어요.. 우리 끝까지 같이 살아요ㅠ"],
-        "accuse": ["{x}님 믿었는데.. 너무 수상해요ㅠㅠ", "{x}님 말할 때 마음이 불편해요.."],
-        "agree": ["맞아요.. {x}님이 좀.."],
-        "defend": ["제가 마피아라니.. 너무 속상해요ㅠㅠ"],
-        "dead": ["{d}님.. 아직 할 말이 많았는데ㅠㅠ"],
-        "vote": ["{x}님.. 미안해요ㅠ"]}),
-    "무념": dict(desc="극도로 과묵함. 한두 단어로만 말함", talk=1, bold=.5, trust=.6, t={
-        "self_intro": ['...무념.', '...잘 부탁.'],
-        "intro_react": ['...{x}. 기억.'],
-        "open": ["...", "...지켜본다."],
-        "accuse": ["...{x}.", "{x}. 수상."],
-        "agree": ["{x}. 동의."],
-        "defend": ["아니다."],
-        "dead": ["...{d}."],
-        "vote": ["{x}."],
-        "quiet": ["..."]}),
-    "도치": dict(desc="모두를 의심하는 의심병 환자. 반말", talk=3, bold=.6, trust=.2, t={
-        "self_intro": ['도치. 아무도 안 믿는다. 너희 다.', '의심하는 게 취미다. 잘 부탁은 안 함.'],
-        "intro_react": ['{x}, 벌써부터 수상해.'],
-        "open": ["다 수상해. 진짜 다.", "아무도 안 믿어. 나 빼고."],
-        "accuse": ["다 수상한데 특히 {x}.", "{x} 너무 조용해. 아니 너무 시끄러워. 아무튼 수상해."],
-        "agree": ["{x}? 원래 의심하고 있었어."],
-        "defend": ["날 의심하는 너가 더 수상해."],
-        "dead": ["{d} 죽은 것도 연출 아냐?"],
-        "vote": ["일단 {x}."]}),
-    "지우": dict(desc="신조어를 쓰는 MZ 신입. 'ㄹㅇ', 'ㅇㅈ', '킹받네' 같은 말투", talk=2, bold=.6, trust=.5, t={
-        "self_intro": ['ㅎㅇ 지우예요 ㄹㅇ 찐시민임ㅋㅋ', '안녕하세요 막내 지우입니당 잘 부탁드려요'],
-        "intro_react": ['{x}님 소개 킹받게 완벽하네요ㅋㅋ'],
-        "open": ["ㅎㅇㅎㅇ 저 시민임 ㄹㅇ", "다들 텐션 왜 이렇게 낮아요"],
-        "accuse": ["{x}님 솔직히 킹받게 수상함", "{x}님 말투 완전 마피아 바이브인데"],
-        "agree": ["{x} ㅇㅈ", "{x}님 쪽 투표 ㄱㄱ"],
-        "defend": ["저요? ㄴㄴ 저 찐시민임", "억까 멈춰"],
-        "dead": ["{d}님 ㅠ 너무 빨리 가셨다"],
-        "vote": ["{x} ㄱ"]}),
-    "평화": dict(desc="싸움을 말리는 평화주의자. 부드러운 존댓말, 근거를 강조", talk=2, bold=.3, trust=.7, t={
-        "self_intro": ['평화입니다. 다들 차분하게, 근거로 이야기해요.', '반갑습니다. 싸우지 말고 범인만 찾아요.'],
-        "intro_react": ['{x}님 소개 좋네요. 근데 조금만 더 지켜볼게요.'],
-        "open": ["다들 진정하고 근거 중심으로 얘기해봐요."],
-        "accuse": ["싸우지 말고요, 근거로 보면 {x}님이 제일 걸려요.", "차분히 보면 {x}님 쪽이 아쉬워요."],
-        "agree": ["{x}님 얘기, 근거가 괜찮네요. 동의해요."],
-        "defend": ["저를 의심하셔도 괜찮아요. 근데 전 시민이에요.", "근거를 듣고 싶어요. 전 아니에요."],
-        "dead": ["{d}님의 희생 헛되지 않게 해요."],
-        "vote": ["{x}님에게 투표할게요."]}),
+    "지훈": dict(desc="말이 짧고 직설적인 편. 존댓말이지만 담백함", talk=2, bold=.8, trust=.5, t={
+        "self_intro": ["지훈입니다. 잘 부탁해요", "지훈이요. 빨리 잡아봅시다"],
+        "intro_react": ["{x}님 소개 짧네요 ㅋㅋ"],
+        "accuse": ["{x}님 좀 이상한데요", "전 {x}님이요. 아까 말이 걸려요"],
+        "agree": ["저도 {x}님", "{x}님 쪽 동의요"],
+        "ask": ["{x}님은 누구 의심해요?", "{x}님 근거가 뭐예요?"],
+        "defend": ["저 아닌데요?", "왜 저요? 근거 있어요?"],
+        "vote": ["{x}님 찍어요"], "quiet": ["아직 모르겠네요"], "dead": ["{d}님 갔네요.."]}),
+    "서연": dict(desc="차분하고 근거를 따지는 편. 부드러운 존댓말", talk=2, bold=.5, trust=.6, t={
+        "self_intro": ["서연이에요. 차분하게 해봐요", "안녕하세요 서연입니다"],
+        "intro_react": ["{x}님 반가워요"],
+        "accuse": ["{x}님이 아까 말 바꾼 게 걸려요", "{x}님 쪽이 좀 신경 쓰여요"],
+        "agree": ["{x}님 얘기 일리 있어요"],
+        "ask": ["{x}님 생각은 어때요?", "{x}님은 왜 그렇게 보세요?"],
+        "defend": ["저 시민이에요. 뭐가 걸리셨어요?", "그건 오해예요"],
+        "vote": ["저는 {x}님이요"], "quiet": ["아직 판단 보류할게요"], "dead": ["{d}님을 왜 노렸을까요"]}),
+    "민재": dict(desc="장난기 조금 있고 ㅋㅋ를 가끔 씀", talk=2, bold=.6, trust=.4, t={
+        "self_intro": ["민재요 ㅋㅋ 잘 부탁드려요", "ㅎㅇ 민재입니다"],
+        "intro_react": ["{x}님 소개 무난하네요 ㅋㅋ"],
+        "accuse": ["{x}님 왜케 조용하세요 ㅋㅋ", "{x}님 좀 수상한데요"],
+        "agree": ["ㅋㅋ 저도 {x}님"],
+        "ask": ["{x}님 누구 찍을 거예요?"],
+        "defend": ["저요?ㅋㅋ 아니에요", "에이 저 아님"],
+        "vote": ["{x}님 갑니다"], "quiet": ["흠 모르겠다"], "dead": ["헐 {d}님 ㅠ"]}),
+    "수빈": dict(desc="조심스럽고 말수가 적은 편", talk=1, bold=.2, trust=.8, t={
+        "self_intro": ["수빈이에요.. 잘 부탁드려요"],
+        "intro_react": ["{x}님 반가워요"],
+        "accuse": ["음.. {x}님이 좀 걸려요"],
+        "agree": ["저도 {x}님 생각했어요"],
+        "ask": ["{x}님은 어떻게 보세요?"],
+        "defend": ["저 진짜 아니에요..", "저 시민이에요"],
+        "vote": ["{x}님으로 할게요"], "quiet": ["잘 모르겠어요.."], "dead": ["{d}님 ㅠㅠ"]}),
+    "현우": dict(desc="의견을 정리하고 이끄는 편", talk=2, bold=.7, trust=.5, t={
+        "self_intro": ["현우입니다. 의견 모아서 해봐요"],
+        "intro_react": ["{x}님 잘 부탁해요"],
+        "accuse": ["정리하면 {x}님이 제일 애매해요"],
+        "agree": ["{x}님으로 모아볼까요?"],
+        "ask": ["{x}님 의견도 들어볼까요?", "{x}님은 누가 제일 수상해요?"],
+        "defend": ["저 아니에요. 다른 분은요?"],
+        "vote": ["{x}님으로 갈게요"], "quiet": ["다들 의견 하나씩 줘봐요"], "dead": ["{d}님 죽어서 누가 이득일까요"]}),
+    "지은": dict(desc="친근하고 리액션이 큰 편", talk=2, bold=.4, trust=.7, t={
+        "self_intro": ["지은이에요~ 재밌게 해요!"],
+        "intro_react": ["{x}님 반가워요~"],
+        "accuse": ["{x}님 좀 수상해요ㅠ"],
+        "agree": ["맞아요 {x}님 좀.."],
+        "ask": ["{x}님 진짜 시민이에요?"],
+        "defend": ["저 아니라구요ㅠ"],
+        "vote": ["{x}님.. 미안해요"], "quiet": ["다 착해 보여서 모르겠어요"], "dead": ["아 {d}님 ㅠㅠ"]}),
+    "도윤": dict(desc="말이 아주 짧고 과묵한 편", talk=1, bold=.5, trust=.6, t={
+        "self_intro": ["도윤입니다"],
+        "intro_react": ["반가워요"],
+        "accuse": ["{x}님 수상해요"],
+        "agree": ["동의요"],
+        "ask": ["{x}님 근거는요?"],
+        "defend": ["아니에요"],
+        "vote": ["{x}님"], "quiet": ["좀 더 볼게요"], "dead": ["{d}님.."]}),
+    "하린": dict(desc="눈치가 빠르고 의심이 많은 편", talk=2, bold=.6, trust=.3, t={
+        "self_intro": ["하린이요. 다 의심할 거예요 ㅎㅎ"],
+        "intro_react": ["{x}님 소개 너무 매끄러운데요?"],
+        "accuse": ["{x}님 말이 너무 매끄러워요", "{x}님 아까부터 남 몰아가던데요"],
+        "agree": ["{x}님 저도 보고 있었어요"],
+        "ask": ["{x}님 아까 그 말 무슨 뜻이에요?"],
+        "defend": ["저 의심하는 이유부터 말해줘요"],
+        "vote": ["{x}님이요"], "quiet": ["더 봐야 알겠네요"], "dead": ["{d}님 죽은 게 좀 이상하네요"]}),
+    "태호": dict(desc="넉살 좋고 분위기를 푸는 편", talk=2, bold=.6, trust=.5, t={
+        "self_intro": ["태호입니다~ 살살 해주세요"],
+        "intro_react": ["{x}님 반가워요 ㅎㅎ"],
+        "accuse": ["{x}님 좀 흔들리는 것 같은데요?"],
+        "agree": ["{x}님 쪽에 한 표"],
+        "ask": ["{x}님 한마디 해보세요"],
+        "defend": ["아이고 저 아니에요"],
+        "vote": ["{x}님 갑니다"], "quiet": ["아직은 다 비슷해 보여요"], "dead": ["{d}님 잘 가요.."]}),
+    "유나": dict(desc="밝은 신입. 가끔 'ㅇㅈ' 같은 줄임말", talk=2, bold=.5, trust=.6, t={
+        "self_intro": ["유나예요! 잘 부탁드립니다ㅎㅎ"],
+        "intro_react": ["{x}님 반가워요ㅎㅎ"],
+        "accuse": ["{x}님 좀 수상하신데요?"],
+        "agree": ["{x}님 ㅇㅈ"],
+        "ask": ["{x}님 누구 의심하세요?"],
+        "defend": ["저요? 저 시민이에요ㅠ"],
+        "vote": ["{x}님 할게요"], "quiet": ["감이 안 와요ㅠ"], "dead": ["{d}님 ㅠ"]}),
 }
 
 COLORS = ["#ff7a7a", "#ffb35c", "#ffd84d", "#8fd96b", "#5cd6c0", "#5cb8ff", "#8f8cff", "#d78cff",
@@ -189,7 +176,9 @@ INTENT_DESC = {
     "last_defense": "처형 직전 최후 변론: 내가 왜 처형되면 안 되는지 간절하게 호소하기 (진짜 직업을 밝힐지는 전략적으로 판단)",
     "judge_yes": "{x}의 처형에 찬성한다고 짧게 말하기",
     "judge_no": "{x}의 처형에 반대한다고 짧게 말하기",
-    "reply": "방금 {x}이(가) 한 말에 대답하기: \"{q}\"",
+    "reply": "방금 {x}이(가) 나한테 한 말에 대답하기: \"{q}\"",
+    "chat": "지금 대화 흐름에 자연스럽게 한마디 (질문에 답하기 / 누군가의 말에 동의·반박 / 근거를 대고 의심 / 궁금한 걸 질문). 덧붙일 말이 없으면 PASS",
+    "ask": "{x}에게 의견이나 근거를 물어보기",
     "self_intro": "사회자가 부른 내 자기소개 차례: 내 캐릭터답게 가볍게 한 줄 자기소개 (직업은 절대 밝히지 말 것, 마피아면 시민인 척)",
     "intro_react": "방금 {x}이(가) 한 자기소개를 장난스럽게 살짝 의심하거나 놀리는 한마디",
 }
@@ -199,8 +188,10 @@ PHASE_KO = {"intro": "직업 확인", "selfintro": "자기소개", "night": "밤
 
 
 def clean_line(line, name):
-    """Claude 답에서 대사 한 줄만 깔끔하게."""
+    """Claude 답에서 대사 한 줄만 깔끔하게. 'PASS'(할 말 없음)면 빈 문자열."""
     line = (line or "").strip().split("\n")[0].strip()
+    if line.upper().strip(" .\"'") in ("PASS", "(PASS)", "패스"):
+        return ""
     for pre in (f"{name}:", f"{name} :", f"[{name}]"):
         if line.startswith(pre):
             line = line[len(pre):].strip()
@@ -215,7 +206,7 @@ def clean_line(line, name):
 # 단계별 시간(초)
 TIMES = dict(intro=8, selfintro=90, night=30, morning=7, day=100, vote=25, defense=20, judge=12, verdict=7)
 FAST = dict(intro=3, selfintro=12, night=8, morning=4, day=20, vote=10, defense=6, judge=5, verdict=4)   # 살아있는 사람이 없을 때
-MAX_LEN = 40          # AI 한 마디 최대 글자 수
+MAX_LEN = 32          # AI 한 마디 최대 글자 수
 DIRECT = ("reply", "defend", "last_defense", "counter", "claim_mafia", "claim_clear", "self_intro")   # 먼저 내보낼 말
 
 
@@ -256,6 +247,7 @@ class Game:
         self.used = {}                                       # AI별 최근 쓴 문장 틀
         self.intro_order, self.intro_i, self.intro_tok, self.intro_cur = [], -1, 0, None   # 자기소개 순서
         self.accused, self.judge = None, {}                  # 최후 변론 대상 / 찬반 (pid → True/False)
+        self.vote_log, self.ai_chain, self.day_seq = [], 0, 0                 # 공개된 투표 기록 / AI 끼리 연달아 주고받은 횟수
         self.outq, self.next_ai_slot, self.ai_last, self.ai_post_t = [], 0.0, {}, 0.0   # AI 말 대기열 · 다음 말 가능 시각 · AI별 마지막 말
         self.llm_busy = 0
         self.dead_talk = {}                                  # 날짜별 죽음 반응 수
@@ -433,6 +425,7 @@ class Game:
 
     def _begin_day(self, now):
         self.day += 1                                         # 낮이 오면 하루가 시작 (밤 N = 낮 N 다음 밤)
+        self.day_seq = self.seq
         self.ready, self.accused_today = set(), {}
         for k in self.heat:
             self.heat[k] *= 0.6
@@ -514,7 +507,9 @@ class Game:
         yes = sum(1 for v in self.judge.values() if v)
         no = sum(1 for v in self.judge.values() if v is False)
         t = self.accused
-        self.sys(f"📊 찬반 결과: 찬성 {yes} · 반대 {no}")
+        ys = ", ".join(self.name(i) for i, v in self.judge.items() if v)
+        ns = ", ".join(self.name(i) for i, v in self.judge.items() if v is False)
+        self.sys(f"📊 찬반 결과: 찬성 {yes}" + (f"({ys})" if ys else "") + f" · 반대 {no}" + (f"({ns})" if ns else ""))
         if yes > no:
             self._kill(t, "vote")
         else:
@@ -590,8 +585,14 @@ class Game:
             return False
         top = max(tally.values())
         best = [t for t, c in tally.items() if c == top]
-        summary = ", ".join(f"{self.name(t)} {c}표" for t, c in sorted(tally.items(), key=lambda x: -x[1]))
-        self.sys(f"📊 투표 결과: {summary}")
+        voters = {}
+        for v, t in self.votes.items():
+            voters.setdefault(t, []).append(self.name(v))
+            self.vote_log.append((self.day, v, t))
+        summary = " / ".join(f"{self.name(t)} {c}표({', '.join(voters[t])})"
+                             for t, c in sorted(tally.items(), key=lambda x: -x[1]))
+        abst = voters.get(None, [])
+        self.sys(f"📊 투표 결과: {summary}" + (f" / 기권: {', '.join(abst)}" if abst else ""))
         if len(best) > 1:
             self.sys("동점이라 아무도 처형되지 않았습니다.")
             return False
@@ -670,10 +671,10 @@ class Game:
         if pid in self.votes:
             prev = self.votes[pid]
             if prev:
-                self.heat[prev] -= .3
+                self.heat[prev] -= .15
         self.votes[pid] = target
         if target:
-            self.heat[target] += .3
+            self.heat[target] += .15
         self.version += 1
         for b in self._live_brains():
             b.on_vote_cast(pid, target)
@@ -724,6 +725,7 @@ class Game:
         self._analyze(pid, text)
         if not p.ai:
             self.next_ai_slot = max(self.next_ai_slot, self.now + 1.8)   # 사람 말 뒤엔 잠깐 숨 고르기
+            self.ai_chain = 0
             if self.phase == "selfintro":
                 if pid == self.intro_cur:
                     self.intro_tok += 1
@@ -808,9 +810,15 @@ class Game:
                     return
                 done["v"] = True
                 self.llm_busy = max(0, self.llm_busy - 1)
-                self.inbox.put((pid, clean_line(line, p.name) or text, scope, kind, phase, day, intent))
+                if line is None:                          # 실패 → 기본 대사
+                    if intent != "chat":
+                        self.inbox.put((pid, text, scope, kind, phase, day, intent))
+                    return
+                said = clean_line(line, p.name)
+                if said:                                  # PASS 면 조용히 넘어감
+                    self.inbox.put((pid, said, scope, kind, phase, day, intent))
             self.stylist(req, cb)
-            self.schedule(8, lambda: cb(text))       # 응답이 늦으면 기본 문장
+            self.schedule(8, lambda: cb(None))       # 응답이 늦으면 기본 문장 (잡담은 생략)
             return
         self.inbox.put((pid, text, scope, kind, phase, day, intent))
 
@@ -835,6 +843,7 @@ class Game:
                 recent.append(f"{tag}{m['n'] or '[사회자]'}: {m['x']}")
         b = self.brains.get(pid)
         sus = [self.name(t) for t in sorted(b.others(), key=b.score, reverse=True)[:2]] if b else []
+        votes = [f"{d}일 투표: {self.name(v)}→{self.name(t) if t else '기권'}" for d, v, t in self.vote_log[-16:]]
         fmt = dict(x=self.name(x) if x else "", d=self.name(d) if d else "", q=q[:120])
         return dict(name=p.name, persona=pers.get("desc", ""), role=p.role, team=self.team_of(pid), mates=mates,
                     intent=intent, intent_desc=INTENT_DESC.get(intent, intent).format(**fmt),
@@ -842,7 +851,7 @@ class Game:
                     accused=self.name(self.accused) if self.accused else "",
                     alive=[o.name for o in self.alive_list()], public=public, claims=claims,
                     known={self.name(k): v for k, v in self.knowledge[pid].items()}, suspects=sus,
-                    recent=recent[-24:], scope=scope)
+                    recent=recent[-20:], scope=scope, votes=votes)
 
     def _ai_post(self, pid, text, scope, kind):
         p = self.players[pid]
@@ -858,6 +867,12 @@ class Game:
             return
         self.post(kind, text, pid, scope)
         self._analyze(pid, text)
+        if self.stylist and self.phase in ("day", "vote") and self.ai_chain < 3:
+            for t in self.mentions(text, pid):
+                if t in self.brains and self.players[t].alive and self.rng.random() < .5:
+                    self.ai_chain += 1
+                    self.brains[t].on_called(pid, text, delay=self.rng.uniform(1.0, 2.0))
+                    break
 
     # ------------------------------------------------ 화면용 정보
     def view(self, pid, now):
@@ -964,13 +979,22 @@ class Brain:
             if self.truth.get(t) in ("경찰", "의사", "기자"):
                 s += 1.5
             return s
-        s = self.sus.get(t, 0) + g.heat[t] * (0.3 + self.trust * 0.5) + self.rng.uniform(0, .8)
+        s = self.sus.get(t, 0) + g.heat[t] * (0.15 + self.trust * 0.25) + self.rng.uniform(0, 1.0)
         r = self.truth.get(t)
         if r in MAFIA_TEAM:
             s += 100
         elif r:
             s -= 100
         return s
+
+    def conf(self, t):
+        """무작위 없이 '이 사람이 마피아라고 얼마나 확신하나' (시민 AI 용)."""
+        r = self.truth.get(t)
+        if r in MAFIA_TEAM:
+            return 100
+        if r:
+            return -100
+        return self.sus.get(t, 0) + self.g.heat[t] * (0.15 + self.trust * 0.25)
 
     def top(self, cands=None, exclude=()):
         cands = [c for c in (cands or self.others()) if c not in exclude]
@@ -1091,17 +1115,32 @@ class Brain:
             g.dead_talk[g.day] = g.dead_talk.get(g.day, 0) + 1
             g.ai_line(self.id, "dead", d=dead_today[0])
             return
-        if g.day == 1 and first and self.rng.random() < .55:
+        if g.day == 1 and first and not g.stylist and self.rng.random() < .55:
             g.ai_line(self.id, "open")
+            return
+        if g.stylist:
+            g.ai_line(self.id, "chat")
             return
         t = self.top()
         if t is None:
             return
-        if self.score(t) < -500 or (self.score(t) < .9 and self.rng.random() < .5):
-            g.ai_line(self.id, "quiet")
-            return
         others_accuse = any(t in ts for a, ts in g.accused_today.items() if a != self.id)
-        g.ai_line(self.id, "agree" if others_accuse else "accuse", x=t)
+        already = t in g.accused_today.get(self.id, set())
+        sc = self.score(t)
+        cf = self.conf(t) if not self.mafia_side else sc
+        if sc > -500 and not already and (cf >= 1.5 or (others_accuse and cf >= 1.1)):
+            g.ai_line(self.id, "agree" if others_accuse else "accuse", x=t)
+        elif self.rng.random() < .6:
+            accusers = [a for a in g.accused_today if a != self.id and g.players[a].alive]
+            talkers = [m["w"] for m in g.chat if m["s"] > g.day_seq and m["w"] and m["w"] != self.id
+                       and m["k"] == "say" and g.players[m["w"]].alive]
+            pool = accusers or talkers
+            if pool:
+                g.ai_line(self.id, "ask", x=self.rng.choice(pool))
+            else:
+                g.ai_line(self.id, "quiet")
+        else:
+            g.ai_line(self.id, "quiet")
 
     # 최후 변론 · 찬반
     def on_defense(self):
@@ -1163,7 +1202,20 @@ class Brain:
         if g.phase != "vote" or not self.p.alive:
             return
         t = self.top()
-        if t is None or self.score(t) < -500 or (self.score(t) < .5 and self.rng.random() < .4):
+        sc = self.score(t) if t else -999
+        if t is not None and not self.mafia_side and self.conf(t) < 1.3:
+            # 확신 없음 → 반은 기권, 반은 남 말 말고 내 의심(sus)대로
+            if self.rng.random() < .5:
+                g.vote(self.id, None)
+                if self.rng.random() < .25:
+                    g.ai_line(self.id, "quiet")
+                return
+            own = [c for c in self.others() if self.truth.get(c) not in ("town?",) and self.truth.get(c) not in ROLE_INFO
+                   or self.truth.get(c) in MAFIA_TEAM]
+            t = max(own or self.others(), key=lambda c: self.sus.get(c, 0) + self.rng.uniform(0, .8))
+        elif self.mafia_side and t is not None and g.heat[t] < 1.0:
+            t = self.rng.choice([c for c in self.others() if c not in self.team()] or [t])   # 묻어가기: 흐름 없으면 아무나
+        if t is None or sc < -500:
             g.vote(self.id, None)
             return
         g.vote(self.id, t)
@@ -1324,14 +1376,20 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
             "기자": "정체는 숨기는 편이 유리.",
             "시민": "추리로 마피아를 찾기. 말이 앞뒤가 안 맞는 사람, 남을 몰아가는 사람을 의심.",
         }.get(req["role"], "")
-        system = (f"당신은 마피아 게임 AI 플레이어 '{req['name']}'입니다.\n"
-                  f"성격·말투: {req['persona']} — 이 말투를 강하게 유지하세요.\n"
+        system = (f"당신은 회사 동료들과 단톡방에서 마피아 게임 중인 '{req['name']}'입니다.\n"
+                  f"성격: {req['persona']}. 캐릭터 연기를 과장하지 말고 평범한 직장인처럼 말하세요.\n"
                   f"비밀 정보: 당신의 진짜 직업은 '{req['role']}'({team}). {strat}\n"
                   + (f"마피아 동료: {', '.join(req['mates'])}\n" if req["mates"] else "")
                   + RULES + "\n"
-                  "[출력 규칙] 단톡방 채팅처럼 아주 짧게. 한 문장, 25자 안팎(절대 40자 넘기지 말 것). 이름표·따옴표·설명·괄호 지문 금지. "
-                  "다른 사람 이름을 직접 부르며 말하기. 앞에서 한 말을 반복하지 말고, 상대 말에 구체적으로 반응하기. "
-                  "지시가 없는데 자기 직업을 밝히지 말 것(마피아는 거짓말 가능).")
+                  "[말하는 법]\n"
+                  "- 진짜 사람이 단톡에 치듯 아주 짧게: 15~25자, 길어도 30자. 한 문장. 이름표·따옴표·괄호 지문 금지.\n"
+                  "- 최근 채팅 흐름을 읽고 방금 나온 말에 반응하기. 혼자 딴 얘기 금지. 앞에서 내가 한 말 반복 금지.\n"
+                  "- 근거 없이 몰아가지 말 것. 의심하려면 근거(투표 기록, 말 바꿈, 경찰 주장, 누굴 감쌌는지)를 짧게 대기. 근거가 없으면 질문하기.\n"
+                  "- 누가 해명하면 그 해명을 듣고 납득하거나, 구체적인 허점을 물어보기. 같은 의심을 고집하지 말기.\n"
+                  "- 다른 사람이 이미 같은 말을 했거나 덧붙일 게 없으면 PASS 라고만 출력.\n"
+                  "- 지시가 없는데 자기 직업을 밝히지 말 것(마피아는 거짓말 가능).\n"
+                  "[좋은 예] 민수님 어제 기권하셨던데 왜요? / 그건 좀 억지 같은데요 / 아 그럼 서연님은 빼야겠네요 / 저 아니에요 ㅋㅋ 어제 지훈님 찍었잖아요\n"
+                  "[나쁜 예] 제가 사회생활 30년인데 눈빛을 보면 다 압니다 여러분 / 확률적으로 분석한 결과 마피아일 가능성이 높습니다")
         lines = [f"[현재] {req['day']}일째 · {req['phase']}" + (f" · 최후 변론 대상: {req['accused']}" if req["accused"] else ""),
                  f"살아있는 사람: {', '.join(req['alive'])}"]
         if req["public"]:
@@ -1340,11 +1398,13 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
             lines.append("경찰 주장: " + " / ".join(req["claims"]))
         if req["known"]:
             lines.append("내가 몰래 알아낸 것: " + ", ".join(f"{k}={v}" for k, v in req["known"].items()))
+        if req.get("votes"):
+            lines.append("공개된 투표 기록: " + " / ".join(req["votes"]))
         if req["suspects"]:
-            lines.append("내가 지금 제일 의심하는 사람: " + ", ".join(req["suspects"]))
+            lines.append("(속으로 의심 중: " + ", ".join(req["suspects"]) + " — 근거가 있을 때만 말하기)")
         lines.append("최근 채팅:\n" + ("\n".join(req["recent"]) or "(아직 없음)"))
         where = "마피아끼리만 보는 비밀 채팅" if req["scope"] == "mafia" else "전체 채팅"
-        lines.append(f"\n지금 {where}에 할 말: {req['intent_desc']}\n(참고 예시 — 그대로 쓰지 말 것: {req['default']})")
+        lines.append(f"\n지금 {where}에 할 말: {req['intent_desc']}")
         return system, "\n".join(lines)
 
     def stylist(req, cb):
