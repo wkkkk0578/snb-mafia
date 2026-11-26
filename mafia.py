@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.6"
+VERSION = "0.7"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")

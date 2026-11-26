@@ -179,12 +179,19 @@ def clean_line(line, name):
     for pre in (f"{name}:", f"{name} :", f"[{name}]"):
         if line.startswith(pre):
             line = line[len(pre):].strip()
-    return line.strip('"').strip("“”").strip()[:120]
+    line = line.strip('"').strip("“”").strip()
+    if len(line) > MAX_LEN:                       # 길면 문장 끝(. ! ? ~ …)이나 띄어쓰기에서 자름
+        cut = max((m.end() for m in re.finditer(r"[.!?~…ㅋㅠ]+", line[:MAX_LEN + 1])), default=0)
+        if cut < 12:
+            cut = line.rfind(" ", 0, MAX_LEN)
+        line = line[:cut if cut >= 12 else MAX_LEN].rstrip(" ,")
+    return line
 
 # 단계별 시간(초)
 TIMES = dict(intro=8, night=30, morning=7, day=100, vote=25, defense=20, judge=12, verdict=7)
 FAST = dict(intro=3, night=8, morning=4, day=20, vote=10, defense=6, judge=5, verdict=4)   # 살아있는 사람이 없을 때
-AI_GAP = 0.8          # AI 말이 한꺼번에 쏟아지지 않게 (초)
+MAX_LEN = 40          # AI 한 마디 최대 글자 수
+DIRECT = ("reply", "defend", "last_defense", "counter", "claim_mafia", "claim_clear")   # 먼저 내보낼 말
 
 
 class Player:
@@ -223,7 +230,7 @@ class Game:
         self.pending = []                                    # (시각, 순번, fn)
         self.used = {}                                       # AI별 최근 쓴 문장 틀
         self.accused, self.judge = None, {}                  # 최후 변론 대상 / 찬반 (pid → True/False)
-        self.outq, self.last_ai_post = [], 0.0               # AI 말 대기열 (간격 두고 내보냄)
+        self.outq, self.next_ai_slot, self.ai_last, self.ai_post_t = [], 0.0, {}, 0.0   # AI 말 대기열 · 다음 말 가능 시각 · AI별 마지막 말
         self.llm_busy = 0
         self.dead_talk = {}                                  # 날짜별 죽음 반응 수
         self._pseq = 0
@@ -293,15 +300,14 @@ class Game:
         self.now = now
         while True:
             try:
-                self.outq.append(self.inbox.get_nowait())
+                pid, text, scope, kind, ph, day, intent = self.inbox.get_nowait()
             except queue.Empty:
                 break
-        if self.outq and now - self.last_ai_post >= AI_GAP:
-            pid, text, scope, kind, ph, day = self.outq.pop(0)
-            if ph == self.phase and day == self.day:
-                self.last_ai_post = now
-                self._ai_post(pid, text, scope, kind)
-            self.outq = [o for o in self.outq if o[4] == self.phase and o[5] == self.day]
+            prio = 0 if intent in DIRECT else 1
+            typing = min(2.0, 0.4 + len(text) * 0.04) if prio == 0 else min(3.0, 0.8 + len(text) * 0.06)  # 타자 치는 시간
+            self.outq.append(dict(pid=pid, text=text, scope=scope, kind=kind, ph=ph, day=day,
+                                  prio=prio, ready=now + typing, born=now))
+        self._pump_ai(now)
         due = sorted([x for x in self.pending if x[0] <= now])
         self.pending = [x for x in self.pending if x[0] > now]
         for _, _, fn in due:
@@ -323,6 +329,38 @@ class Game:
         if self.phase == "judge":
             return el >= 3 and all(p.id in self.judge for p in self.alive_list() if p.id != self.accused)
         return False
+
+    def _pump_ai(self, now):
+        """AI 말을 사람 대화 속도로 하나씩 내보낸다."""
+        q = [o for o in self.outq if o["ph"] == self.phase and o["day"] == self.day
+             and now - o["born"] < (20 if o["prio"] == 0 else 14)]
+        # 같은 AI 의 잡담이 쌓이면 최신 1개만, 전체 잡담은 3개까지만
+        seen, keep = set(), []
+        for o in reversed(q):
+            if o["prio"] == 1 and o["pid"] in seen:
+                continue
+            seen.add(o["pid"])
+            keep.append(o)
+        keep.reverse()
+        chat = [o for o in keep if o["prio"] == 1]
+        if len(chat) > 3:
+            drop = {id(o) for o in chat[:-3]}
+            keep = [o for o in keep if id(o) not in drop]
+        self.outq = keep
+        ready = [o for o in self.outq if o["ready"] <= now]
+        if not ready:
+            return
+        o = min(ready, key=lambda o: (o["prio"], o["born"]))
+        # 대답·해명은 1.2초만 띄우면 끼어들 수 있고, 잡담은 정해진 순번(2.5~4초 간격)을 기다림
+        if now < (self.ai_post_t + 1.2 if o["prio"] == 0 else self.next_ai_slot):
+            return
+        self.outq.remove(o)
+        if o["prio"] == 1 and now - self.ai_last.get(o["pid"], -99) < 9:
+            return                                              # 같은 AI 잡담은 9초에 한 번
+        self.ai_last[o["pid"]] = now
+        self.ai_post_t = now
+        self.next_ai_slot = now + 2.5 + len(o["text"]) * 0.03 + self.rng.uniform(0, 1.5)
+        self._ai_post(o["pid"], o["text"], o["scope"], o["kind"])
 
     def _advance(self, now):
         ph = self.phase
@@ -607,6 +645,7 @@ class Game:
         self.post("say", text, pid, "all")
         self._analyze(pid, text)
         if not p.ai:
+            self.next_ai_slot = max(self.next_ai_slot, self.now + 1.8)   # 사람 말 뒤엔 잠깐 숨 고르기
             self._call_ai(pid, text)
         return True
 
@@ -618,9 +657,9 @@ class Game:
         if not who and ("?" in text or "다들" in text or "누구" in text or "AI" in text.upper()):
             cands = [b.id for b in self._live_brains()]
             if cands:
-                who = self.rng.sample(cands, min(len(cands), 2 if self.stylist else 1))
+                who = [self.rng.choice(cands)]
         for i, t in enumerate(who[:2]):
-            self.brains[t].on_called(pid, text, delay=0.3 + i * 1.0)
+            self.brains[t].on_called(pid, text, delay=self.rng.uniform(0.8, 1.6) + i * 3)
 
     # ------------------------------------------------ 채팅 해석 (AI 들이 듣는 내용)
     def mentions(self, text, speaker):
@@ -683,11 +722,11 @@ class Game:
                     return
                 done["v"] = True
                 self.llm_busy = max(0, self.llm_busy - 1)
-                self.inbox.put((pid, clean_line(line, p.name) or text, scope, kind, phase, day))
+                self.inbox.put((pid, clean_line(line, p.name) or text, scope, kind, phase, day, intent))
             self.stylist(req, cb)
             self.schedule(8, lambda: cb(text))       # 응답이 늦으면 기본 문장
             return
-        self.inbox.put((pid, text, scope, kind, phase, day))
+        self.inbox.put((pid, text, scope, kind, phase, day, intent))
 
     def llm_request(self, pid, intent, x, d, scope, q, default):
         """Claude 에게 넘길 상황 정보 (그 AI 가 알 수 있는 것만)."""
@@ -927,9 +966,9 @@ class Brain:
     def on_day(self):
         g = self.g
         self.spoke = 0
-        n = max(2, self.talk + 1 + self.rng.choice([-1, 0, 1]))
+        n = max(1, self.talk + self.rng.choice([-1, 0, 0]))
         span = max(12, g.times["day"] * .7) if g.humans_alive() else 12
-        times = sorted([self.rng.uniform(1.5, 10)] + [self.rng.uniform(8, span) for _ in range(n - 1)])
+        times = sorted([self.rng.uniform(3, 12)] + [self.rng.uniform(15, span) for _ in range(n - 1)])
         for i, t in enumerate(times):
             g.schedule(t, lambda first=(i == 0): self._day_line(first))
 
@@ -1006,7 +1045,7 @@ class Brain:
             else:
                 yes = self.score(t) + self.rng.uniform(-.6, .6) > .35
         g.judge_vote(self.id, yes)
-        if self.rng.random() < .3:
+        if self.rng.random() < .15:
             g.ai_line(self.id, "judge_yes" if yes else "judge_no", x=t)
 
     def on_spared(self, pid):
@@ -1016,7 +1055,7 @@ class Brain:
     def on_called(self, caller, text, delay=0.5):
         """사람이 내 이름을 부르거나 질문함 → 바로 대답 (Claude 가 있으면 맥락 있게)."""
         g = self.g
-        if not self.p.alive or g.now - getattr(self, "last_called", -99) < 3:
+        if not self.p.alive or g.now - getattr(self, "last_called", -99) < 6:
             return
         self.last_called = g.now
         accused_me = self.p.name in text and any(w in text for w in ACCUSE_W)
@@ -1040,7 +1079,7 @@ class Brain:
             g.vote(self.id, None)
             return
         g.vote(self.id, t)
-        if self.rng.random() < .35:
+        if self.rng.random() < .2:
             g.ai_line(self.id, "vote", x=t)
 
     # 듣기
@@ -1055,7 +1094,7 @@ class Brain:
                     self.last_defend = g.now
                     if g.stylist and not g.players[accuser].ai:
                         continue                              # 사람이 부른 건 on_called 가 맥락 있게 대답
-                    self._say(self.rng.uniform(1.0, 2.5), "defend", x=accuser)
+                    self._say(self.rng.uniform(2.0, 4.0), "defend", x=accuser)
             elif t in self.sus:
                 self.sus[t] += .3 * self.trust
                 if self.truth.get(t) and self.truth[t] not in MAFIA_TEAM and not self.mafia_side:
@@ -1202,7 +1241,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
                   f"비밀 정보: 당신의 진짜 직업은 '{req['role']}'({team}). {strat}\n"
                   + (f"마피아 동료: {', '.join(req['mates'])}\n" if req["mates"] else "")
                   + RULES + "\n"
-                  "[출력 규칙] 단톡방 채팅처럼 짧고 자연스럽게 한 줄(최대 50자)만. 이름표·따옴표·설명·괄호 지문 금지. "
+                  "[출력 규칙] 단톡방 채팅처럼 아주 짧게. 한 문장, 25자 안팎(절대 40자 넘기지 말 것). 이름표·따옴표·설명·괄호 지문 금지. "
                   "다른 사람 이름을 직접 부르며 말하기. 앞에서 한 말을 반복하지 말고, 상대 말에 구체적으로 반응하기. "
                   "지시가 없는데 자기 직업을 밝히지 말 것(마피아는 거짓말 가능).")
         lines = [f"[현재] {req['day']}일째 · {req['phase']}" + (f" · 최후 변론 대상: {req['accused']}" if req["accused"] else ""),
@@ -1225,7 +1264,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
             with sem:
                 try:
                     system, user = build(req)
-                    body = json.dumps({"model": model, "max_tokens": 120, "system": system,
+                    body = json.dumps({"model": model, "max_tokens": 60, "system": system,
                                        "messages": [{"role": "user", "content": user}]}).encode("utf-8")
                     rq = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
                         "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"})

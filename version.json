@@ -1,11 +1,11 @@
 {
- "version": 4,
- "note": "첫날 토론부터, Claude 키 진단",
+ "version": 5,
+ "note": "AI 말 짧게·채팅 속도 조절",
  "files": {
-  "mafia.py": "1a65ee6fe9c9c67e9a4c9b1a68dc1e55f2916866bcbccb3c640c2f6b00c29816",
-  "mafia_core.py": "a0b572df2a6961d09fbbb032de9bb5c11f620d965268c35d8ad4b3c4615d50c5",
+  "mafia.py": "937e933d7814c00c65471ad3c189a731dadadf14d6643d7519a0547d5cc9d976",
+  "mafia_core.py": "72f8ee8c347b8fafd26ce5c368a60b0965c4241891d4c0ff3481ccffa419cb76",
   "desk.py": "6a54610e3e7677c8156756a05346711dcc3382ed7a5aba16fcb8090fd2a7444b",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "e63a09f397df86db17566826d759e92d76c0cbfd1d3d98c3b271567fe592086b"
+  "안내.txt": "77e07d66efa562e4a432190d2210b9b9d5467165d48527402eb0bab1b47fb977"
  }
 }
