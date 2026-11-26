@@ -1,11 +1,11 @@
 {
- "version": 2,
- "note": "설정을 PC별 위치로 (ID 겹침 방지)",
+ "version": 3,
+ "note": "최후 변론·찬반 투표, Claude AI 대화 강화",
  "files": {
-  "mafia.py": "caa85855887ad3799e82dd1a99f31e7b7b177cc3de66f7f0bd6b0f196da0e98d",
-  "mafia_core.py": "4c9777187e803126fd344cd8b43c77294041a5018713c072a7821568c1725a65",
+  "mafia.py": "05f4d2530a534001c07265b0fca321e4a9716a141e687bf718dbe4131fcb02a9",
+  "mafia_core.py": "4574a93cbca28af74377ccb4dcc6857a7940dd8cd68b554415222e5bfb20a9e4",
   "desk.py": "6a54610e3e7677c8156756a05346711dcc3382ed7a5aba16fcb8090fd2a7444b",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "cfb0528215a7b5b374d36e7982b98ab133b8deecb57039cb91aa6d417168b5a1"
+  "안내.txt": "890c365b759c853ffae95840116018efe293d75c002d98db4370a1c1833deda6"
  }
 }

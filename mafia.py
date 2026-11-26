@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.4"
+VERSION = "0.5"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -212,6 +212,8 @@ class Host:
             g.vote(pid, target)
         elif kind == "ready":
             g.set_ready(pid)
+        elif kind == "judge":
+            g.judge_vote(pid, bool(target))
         elif kind == "say":
             g.say(pid, text)
 
@@ -248,6 +250,11 @@ class Host:
             self.last_lobby = now
             self.net.send(self.lobby_msg())
         g = self.game
+        st = getattr(self.stylist, "status", "") if self.stylist else ""
+        if st and st != getattr(self, "_llm_told", ""):
+            self._llm_told = st
+            self.notices.append("🤖 Claude 연결 OK — AI 가 상황을 보고 말해요." if st == "ok"
+                                else f"🤖 Claude 연결 문제: {st} → 기본 대사로 진행해요. (config.json 의 claude_api_key 확인)")
         if g:
             g.tick(now)
             changed = g.version != self.sent_ver
@@ -266,9 +273,10 @@ class Host:
 BG, PANEL, LINE, TXT, SUB = "#16181f", "#20232d", "#2c3040", "#eef0f6", "#9097a8"
 ACCENT, RED, GOLD, NIGHT = "#7aa2ff", "#ff5d6c", "#ffd166", "#24264a"
 PHASE_TXT = {"intro": "🎲 직업 확인", "night": "🌙 밤", "morning": "🌅 아침", "day": "☀ 낮 토론",
-             "vote": "🗳 투표", "verdict": "⚖ 결과", "end": "🏁 게임 끝"}
+             "vote": "🗳 투표", "defense": "🎤 최후 변론", "judge": "👍👎 찬반 투표", "verdict": "⚖ 결과",
+             "end": "🏁 게임 끝"}
 PHASE_BG = {"night": NIGHT, "intro": "#2b2340", "morning": "#3a2f25", "day": "#24303f",
-            "vote": "#3a2430", "verdict": "#3a2430", "end": "#23352b"}
+            "vote": "#3a2430", "defense": "#45311f", "judge": "#3a2430", "verdict": "#3a2430", "end": "#23352b"}
 
 
 class App:
@@ -375,13 +383,40 @@ class App:
         if not online:
             tk.Label(fr, text="config.json 에 서버 정보가 없어 온라인은 꺼져 있어요.", bg=BG, fg=RED,
                      font=self.f(9)).pack(pady=self.px(6))
-        llm = "켜짐 (Claude)" if self.cfg.get("claude_api_key") else "꺼짐 — 기본 대사 사용"
-        tk.Label(fr, text=f"AI 말투 다듬기: {llm}", bg=BG, fg=SUB, font=self.f(9)).pack(side="bottom")
+        key = self.api_key()
+        llm = (f"🤖 AI 대화: Claude 켜짐 (키 …{key[-4:]})  ·  클릭해서 변경" if key
+               else "🤖 AI 대화: 기본 대사  ·  클릭해서 Claude API 키 넣기 (방장만 필요)")
+        lk = tk.Label(fr, text=llm, bg=BG, fg=GOLD if key else SUB, font=self.f(9), cursor="hand2")
+        lk.pack(side="bottom", pady=(self.px(4), 0))
+        lk.bind("<Button-1>", lambda e: self.ask_key())
         upd = os.environ.get("SNB_UPDATED")
         tk.Label(fr, text=(f"✨ 새 버전으로 업데이트됨 (v{BUILD})" if upd else f"v{VERSION} · 빌드 {BUILD}"),
                  bg=BG, fg=GOLD if upd else "#555b6e", font=self.f(9 if upd else 8)).pack(side="bottom")
         self.e_nick.focus_set()
         self.e_nick.bind("<Return>", lambda e: self.e_room.focus_set())
+
+    def api_key(self):
+        """Claude API 키 — 이 PC 설정(%APPDATA%)에만 저장. config.json 에 적어 둔 것도 읽음."""
+        return (self.st.get("claude_api_key") or self.cfg.get("claude_api_key") or "").strip()
+
+    def ask_key(self):
+        from tkinter import simpledialog
+        k = simpledialog.askstring(
+            "Claude API 키",
+            "방장 PC에만 넣으면 AI 들이 Claude 로 대화해요.\n"
+            "키는 이 PC 설정에만 저장되고, 게임 폴더를 공유해도 같이 가지 않아요.\n"
+            "(console.anthropic.com → API Keys 에서 발급 · 비우고 확인하면 끔)",
+            initialvalue=self.st.get("claude_api_key", ""), show="*", parent=self.root)
+        if k is None:
+            return
+        self.st["claude_api_key"] = k.strip()
+        write_json(SETTINGS, self.st)
+        nick, room = self.e_nick.get(), self.e_room.get()
+        self.build_start()
+        self.e_nick.delete(0, "end")
+        self.e_nick.insert(0, nick)
+        self.e_room.delete(0, "end")
+        self.e_room.insert(0, room)
 
     def btn(self, parent, text, cmd, color, state=True, small=False):
         tk = self.tk
@@ -411,8 +446,8 @@ class App:
         else:
             self.net = Net(self.cfg["url"], self.cfg["key"], room)
         stylist = None
-        if mode != "join" and self.cfg.get("claude_api_key"):
-            stylist = core.make_claude_stylist(self.cfg["claude_api_key"], self.cfg.get("claude_model", "claude-haiku-5-5"))
+        if mode != "join" and self.api_key():
+            stylist = core.make_claude_stylist(self.api_key(), self.cfg.get("claude_model", "claude-haiku-5-5"))
         self.host = Host(self.me, nick, self.net, stylist) if mode != "join" else None
         if mode == "solo":
             self.host.total = 8
@@ -592,7 +627,11 @@ class App:
             if me.get("mchat"):
                 return True, "🔪 마피아 채팅 — 마피아 팀만 보여요"
             return False, "🌙 밤에는 말할 수 없어요 (마피아만 몰래 대화)"
-        return True, "💬 전체 채팅 — AI 이름을 넣어 말하면 AI 가 반응해요"
+        if v["phase"] == "defense":
+            if me.get("accused"):
+                return True, "🎤 당신의 최후 변론! 지금은 당신만 말할 수 있어요"
+            return False, f"🎤 {v.get('accused', '')}님 최후 변론 중 — 들어 주세요"
+        return True, "💬 전체 채팅 — AI 이름을 부르거나 질문하면 AI 가 바로 대답해요"
 
     def update_chat_box(self):
         ok, msg = self.chat_mode()
@@ -857,6 +896,8 @@ class App:
                 cv.create_oval(cx - R - 5, cy - R - 5, cx + R + 5, cy + R + 5, outline=GOLD, width=3)
             if p.get("mp"):
                 cv.create_oval(cx - R - 9, cy - R - 9, cx + R + 9, cy + R + 9, outline=RED, width=2, dash=(4, 2))
+            if p.get("acc") and v and v["phase"] in ("defense", "judge"):
+                cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#ff9b3d", width=3)
             cv.create_oval(cx - R, cy - R, cx + R, cy + R, fill=fill, outline="#ffffff" if pid == self.me else "",
                            width=2)
             cv.create_text(cx, cy, text=(p["n"][:1] or "?"), font=self.f(9 if small else 15, True),
@@ -910,6 +951,8 @@ class App:
             for p in v["players"]:
                 role = p.get("r") if p["id"] != self.me else None
                 tag = role or (p.get("tag") if p.get("tag") in ("마피아", "마피아 아님") else None)
+                if p.get("acc") and v["phase"] in ("defense", "judge"):
+                    tag = "🎤 변론"
                 rows.append(dict(id=p["id"], n=p["n"], ch=p.get("ch"), ai=p["ai"], alive=p["a"],
                                  sub=tag or "", mafia=(role in core.MAFIA_TEAM) or tag == "마피아"))
                 if self.host and p["ai"]:
@@ -930,6 +973,8 @@ class App:
         if ph == "night" and self.prev_phase != "night":
             self.desk.banner("Night Time", f"{v.get('day', 0)}번째 밤", color=(214, 226, 255, 255),
                              tint="#00051a", dim=0.5)
+        if ph == "defense" and self.prev_phase != "defense":
+            self.desk.banner("최후 변론", f"{v.get('accused', '')}님", color=(255, 196, 92, 255), tint="#140a00", dim=0.3)
         alive = {p["id"]: p["a"] for p in v["players"]}
         for p in v["players"]:
             if self.prev_alive.get(p["id"]) and not p["a"]:
@@ -1069,6 +1114,18 @@ class App:
                 hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if self.st.get("size") == "hide" else "🗳 처형할 사람을 클릭하세요") \
                     + ("  (다시 클릭하면 변경)" if me.get("picked") else "")
                 btns = [("기권", lambda: self.do_act("vote", None), "#3a3f52")]
+        elif ph == "defense":
+            hint = ("🎤 당신의 최후 변론! 채팅으로 살려 달라고 호소하세요" if me.get("accused")
+                    else f"🎤 {v.get('accused', '')}님의 최후 변론을 들어 주세요")
+        elif ph == "judge":
+            if me.get("act"):
+                j = me.get("judge")
+                hint = f"👍👎 {v.get('accused', '')}님 처형에 " + ("찬성했어요 (바꿀 수 있어요)" if j is True else
+                                                                "반대했어요 (바꿀 수 있어요)" if j is False else "찬성 / 반대?")
+                btns = [("👍 찬성" + (" ✔" if j is True else ""), lambda: self.do_act("judge", True), "#b8434f"),
+                        ("👎 반대" + (" ✔" if j is False else ""), lambda: self.do_act("judge", False), "#3f6fb5")]
+            elif me.get("accused"):
+                hint = "🙏 다들 찬반을 고르는 중… 운명을 기다리세요"
         elif ph == "end":
             hint = "수고하셨어요! 모든 직업이 공개됐어요."
             if self.host:
