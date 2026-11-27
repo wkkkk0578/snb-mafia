@@ -5,6 +5,7 @@
 - Brain: AI 한 명의 머리. '무엇을 할지'는 규칙(휴리스틱)으로 정하고,
          '어떻게 말할지'는 페르소나 문장 틀 또는 (설정 시) Claude API 가 다듬는다.
 """
+import math
 import queue
 import time
 import random
@@ -503,6 +504,118 @@ INTENT_DESC = {
     "ghost": "죽은 사람끼리만 보는 유령 채팅에서 {x}의 말에 편하게 대답하기: \"{q}\" (이제 죽었으니 내 직업을 말해도 됨)",
 }
 
+# ---------------------------------------------------------------- 감정 (긁혔을 때)
+# 욕·비아냥·깐족·같은 사람의 반복 몰이에 화가 쌓이고(성격별 민감도), 시간이 지나면 식음.
+# 단계 1 살짝 / 2 기분 나쁨 / 3 흥분. 흥분하면 말이 길어지고 두세 마디로 몰아침.
+# 반응: snap 날카롭게 / calm 차분히 선 긋기 / laugh 웃어넘김 / hurt 상처 / cold 무시·차갑게
+#       counter 역공·비꼼 / fluster 당황.  흥분(3단계)에서는 heat 쪽으로 바뀜(차분한 사람도 결국 터짐)
+# cap: 같은 사람에게 하루 몇 번까지 대꾸 (넘으면 무시), sorry: 식은 뒤 사과할 확률, sulk: 상처받으면 한동안 조용
+# side: 남이 싸울 때 — mediate 말림 / defend 당한 사람 편 / fuel 부추김 / none
+TEMPER = {
+    "지훈": dict(sens=.7, low="snap", high="snap", cap=3, sorry=.15, sulk=False, side="none"),
+    "서연": dict(sens=.3, low="calm", high="snap", cap=4, sorry=.6, sulk=False, side="mediate"),
+    "민재": dict(sens=.3, low="laugh", high="snap", cap=3, sorry=.3, sulk=False, side="fuel"),
+    "수빈": dict(sens=.85, low="hurt", high="hurt", cap=1, sorry=0, sulk=True, side="none"),
+    "현우": dict(sens=.4, low="calm", high="snap", cap=2, sorry=.5, sulk=False, side="mediate"),
+    "지은": dict(sens=.7, low="hurt", high="snap", cap=3, sorry=.5, sulk=False, side="defend"),
+    "도윤": dict(sens=.4, low="cold", high="cold", cap=1, sorry=0, sulk=False, side="none"),
+    "하린": dict(sens=.6, low="counter", high="counter", cap=5, sorry=.1, sulk=False, side="fuel"),
+    "태호": dict(sens=.2, low="laugh", high="calm", cap=2, sorry=.3, sulk=False, side="mediate"),
+    "유나": dict(sens=.6, low="fluster", high="hurt", cap=2, sorry=.2, sulk=True, side="defend"),
+}
+DEFAULT_TEMPER = dict(sens=.5, low="calm", high="snap", cap=2, sorry=.3, sulk=False, side="none")
+
+SWEAR_RE = re.compile(r"(시발|씨발|씨빨|ㅅㅂ|ㅆㅂ|ㅅ\s?ㅂ|병신|ㅂㅅ|븅신|좆|ㅈ같|존나|ㅈㄴ|개새|새끼|꺼져|닥쳐|닥치|미친|ㅁㅊ|"
+                      r"또라이|지랄|ㅈㄹ|멍청|등신|ㄲㅈ|ㄷㅊ)")
+INSULT_RE = re.compile(r"(노답|한심|어이없|헛소리|개소리|입 ?다물|조용히 ?해|그만 ?좀|됐고|관심 ?없|짜증|답답|무식|바보)")
+TEASE_RE = re.compile(r"(ㅉㅉ|찔리|긁혔|긁힘|발끈|쫄았|쫄리|들켰|어휴|퉤|웃기네|티 ?나|ㅗ|ㅋㅋ+\s*(마피아|범인)\s*(확정|맞네))")
+
+
+def provocation(text):
+    """(세기, 종류) — 욕 1.6 / 비아냥 1.1 / 깐족 .7 / 없음 0."""
+    if SWEAR_RE.search(text):
+        return 1.6, "swear"
+    if INSULT_RE.search(text):
+        return 1.1, "insult"
+    if TEASE_RE.search(text):
+        return .7, "tease"
+    return 0, None
+
+
+TEMPER_J = {
+    "tp_snap1": ["말이 좀 심하시네요", "왜 그렇게 말해요?", "아 좀 그렇네요"],
+    "tp_snap2": ["아니 말 좀 가려서 하세요", "뭐라고요? 저한테요?", "왜 저한테 시비예요?"],
+    "tp_snap3": ["아니 진짜 어이없네요! 근거나 대고 말하세요", "계속 그러시면 저도 {x}님 찍어요 ㅡㅡ", "아니 왜 자꾸 저만 갖고 그래요? 진짜 짜증나네"],
+    "tp_calm1": ["그렇게 말씀하실 것까진 없잖아요", "흥분하지 말고 근거로 얘기해요"],
+    "tp_calm2": ["말씀이 좀 지나치신 것 같아요", "저 계속 근거 말했는데요", "감정적으로 가지 마시죠"],
+    "tp_calm3": ["아니 제가 아까부터 근거 말했잖아요. 이건 좀 아니죠", "이렇게 몰아가는 게 오히려 더 수상해요. 다들 {x}님 보세요"],
+    "tp_laugh1": ["ㅋㅋㅋ 왜 긁혀", "ㅋㅋ 진정하세요", "ㅋㅋㅋㅋ 아 웃기네"],
+    "tp_laugh2": ["ㅋㅋ 아 왜 그래요", "에이 너무하시네 ㅋㅋ", "ㅋㅋ 저 상처받아요~"],
+    "tp_laugh3": ["아 이건 좀 기분 나쁘네요 ㅋㅋ.. 진짜로요", "웃자고 하는 말 아니죠? 저 진짜 시민이에요"],
+    "tp_hurt1": ["아.. 왜 그렇게 말해요ㅠ", "헐 너무해요ㅠ"],
+    "tp_hurt2": ["저 진짜 상처받았어요..", "말을 꼭 그렇게 해야 돼요?ㅠ"],
+    "tp_hurt3": ["아 진짜 너무하시네요ㅠㅠ 저 그냥 말 안 할게요", "다들 저만 몰아가고.. 진짜 속상하네요ㅠ"],
+    "tp_cold2": ["...그만하시죠", "대꾸 안 할게요"],
+    "tp_cold3": ["그만하세요", "{x}님 말에는 더 대답 안 합니다"],
+    "tp_counter1": ["찔려서 그래요? ㅋㅋ", "왜 이렇게 예민해요"],
+    "tp_counter2": ["저한테 화내는 거 보니 더 수상한데요", "말 돌리지 말고 대답이나 해요"],
+    "tp_counter3": ["{x}님 진짜 수상하네요. 다들 {x}님 보세요", "발끈하는 거 보니 확실하네요 ㅋㅋ 다들 봤죠?"],
+    "tp_fluster1": ["헉 저한테 왜요ㅠ", "네? 갑자기요?"],
+    "tp_fluster2": ["아니 저 진짜 아니에요ㅠ", "왜 저한테만 그래요ㅠ"],
+    "tp_fluster3": ["아 진짜 왜 그러세요ㅠㅠ 저 아무것도 안 했는데", "저한테 자꾸 왜 그래요ㅠ 속상해요"],
+    "tp_mediate": ["다들 진정하고 근거로 얘기해요", "싸우지 말고 투표 얘기해요", "워워 진정해요"],
+    "tp_defend": ["{v}님한테 말이 좀 심하신데요", "그렇게까지 할 필요는 없잖아요", "{v}님 괜찮아요?"],
+    "tp_fuel": ["오 싸운다 ㅋㅋ", "ㅋㅋㅋ 분위기 무엇", "ㅋㅋ 둘 중 하나는 마피아네"],
+    "tp_sorry": ["아까는 제가 좀 흥분했네요", "아까 말 심했으면 미안해요", "아까는 좀 예민했어요 ㅎㅎ"],
+}
+TEMPER_B = {
+    "tp_snap1": ["말이 좀 심한데?", "왜 그렇게 말해?", "아 좀 그렇네"],
+    "tp_snap2": ["아니 말 좀 가려서 해", "뭐? 나한테?", "왜 나한테 시비야?"],
+    "tp_snap3": ["아니 진짜 어이없네! 근거나 대고 말해", "계속 그러면 나도 {x} 찍는다 ㅡㅡ", "아니 왜 자꾸 나만 갖고 그래? 진짜 짜증나네"],
+    "tp_calm1": ["그렇게까지 말할 건 없잖아", "흥분하지 말고 근거로 얘기하자"],
+    "tp_calm2": ["말이 좀 지나친 거 같아", "나 계속 근거 말했는데", "감정적으로 가지 말자"],
+    "tp_calm3": ["아니 내가 아까부터 근거 말했잖아. 이건 좀 아니지", "이렇게 몰아가는 게 오히려 더 수상해. 다들 {x} 봐봐"],
+    "tp_laugh1": ["ㅋㅋㅋ 왜 긁혀", "ㅋㅋ 진정해", "ㅋㅋㅋㅋ 아 웃기네"],
+    "tp_laugh2": ["ㅋㅋ 아 왜 그래", "에이 너무하네 ㅋㅋ", "ㅋㅋ 나 상처받아~"],
+    "tp_laugh3": ["아 이건 좀 기분 나쁘다 ㅋㅋ.. 진짜로", "웃자고 하는 말 아니지? 나 진짜 시민이야"],
+    "tp_hurt1": ["아.. 왜 그렇게 말해ㅠ", "헐 너무해ㅠ"],
+    "tp_hurt2": ["나 진짜 상처받았어..", "말을 꼭 그렇게 해야 돼?ㅠ"],
+    "tp_hurt3": ["아 진짜 너무하네ㅠㅠ 나 그냥 말 안 할래", "다들 나만 몰아가고.. 진짜 속상해ㅠ"],
+    "tp_cold2": ["...그만해", "대꾸 안 할게"],
+    "tp_cold3": ["그만해", "{x} 말엔 더 대답 안 해"],
+    "tp_counter1": ["찔려서 그래? ㅋㅋ", "왜 이렇게 예민해"],
+    "tp_counter2": ["나한테 화내는 거 보니 더 수상한데", "말 돌리지 말고 대답이나 해"],
+    "tp_counter3": ["{x} 진짜 수상하네. 다들 {x} 봐", "발끈하는 거 보니 확실하네 ㅋㅋ 다들 봤지?"],
+    "tp_fluster1": ["헉 나한테 왜ㅠ", "응? 갑자기?"],
+    "tp_fluster2": ["아니 나 진짜 아니야ㅠ", "왜 나한테만 그래ㅠ"],
+    "tp_fluster3": ["아 진짜 왜 그래ㅠㅠ 나 아무것도 안 했는데", "나한테 자꾸 왜 그래ㅠ 속상해"],
+    "tp_mediate": ["다들 진정하고 근거로 얘기하자", "싸우지 말고 투표 얘기하자", "워워 진정"],
+    "tp_defend": ["{v}한테 말이 좀 심한데", "그렇게까지 할 필요는 없잖아", "{v} 괜찮아?"],
+    "tp_fuel": ["오 싸운다 ㅋㅋ", "ㅋㅋㅋ 분위기 무엇", "ㅋㅋ 둘 중 하나는 마피아네"],
+    "tp_sorry": ["아까는 내가 좀 흥분했네", "아까 말 심했으면 미안", "아까는 좀 예민했어 ㅎㅎ"],
+}
+GENERIC.update(TEMPER_J)
+GENERIC_B.update(TEMPER_B)
+TEMPER_DESC = dict(snap="날카롭게 받아치기", calm="차분하게 선을 긋기", laugh="웃어넘기기", hurt="상처받은 티 내기",
+                   cold="차갑고 짧게 끊기", counter="비꼬며 역으로 의심하기", fluster="당황해서 억울해하기")
+LEVEL_DESC = {1: "살짝 기분 나쁜 정도, 짧게", 2: "기분 나쁨이 드러나게", 3: "흥분해서 감정적으로, 두세 문장으로 몰아치듯 (욕은 절대 금지)"}
+for _k in list(TEMPER_J):
+    if _k[:-1] in ("tp_snap", "tp_calm", "tp_laugh", "tp_hurt", "tp_cold", "tp_counter", "tp_fluster"):
+        _t, _lv = _k[3:-1], int(_k[-1])
+        INTENT_DESC[_k] = "{x}이(가) 나를 긁음(\"{q}\"). " + TEMPER_DESC[_t] + " — " + LEVEL_DESC[_lv]
+INTENT_DESC.update({
+    "tp_mediate": "{x}와 {v}이(가) 싸우는 중. 진정하라고 말리기",
+    "tp_defend": "{x}가 {v}에게 심하게 말함(\"{q}\"). {v} 편을 들어 주기",
+    "tp_fuel": "{x}와 {v}이(가) 싸우는 걸 보고 재밌다는 듯 한마디",
+    "tp_sorry": "아까 {x}한테 흥분해서 말한 걸 살짝 사과하거나 머쓱해하기",
+})
+TEMPER_INTENTS = tuple(INTENT_DESC_k for INTENT_DESC_k in INTENT_DESC if INTENT_DESC_k.startswith("tp_"))
+
+
+def heated(intent):
+    return intent.startswith("tp_") and intent.endswith("3")
+
+
 PHASE_KO = {"intro": "직업 확인", "selfintro": "자기소개", "night": "밤", "morning": "아침", "day": "낮 토론", "vote": "투표",
             "defense": "최후 변론", "judge": "찬반 투표", "verdict": "결과 발표", "end": "게임 끝"}
 
@@ -520,6 +633,8 @@ LIMITS = dict(react=8, short_ask=12, why=8, nudge=16, quiet=16, agree=16, ask=18
               fu_dig=16, fu_dig_v=16, fu_narrow=22, fu_challenge=20, fu_challenge_v=20, fu_press=14, fu_share=18,
               fu_dig_c=18, fu_counter_c=18, fu_agree_c=20, ans_clear=20, ans_hold=18, ans_concede=16, ans_stuck=18, ans_about_yes=20, ans_about_no=20, ans_vote=24, ans_claim_yes=16, ans_claim_no=16,
               fu_bridge=20, fu_agree=18, fu_disagree=20, fu_ack=8, chime_q=16, claim_mafia=30, claim_clear=30, counter=30, defend=40, last_defense=50)
+for _k in TEMPER_INTENTS:
+    LIMITS[_k] = {"1": 18, "2": 26, "3": 52}.get(_k[-1], 20)
 LONG_INTENTS = ("defend", "last_defense")          # 길면 두 마디로 끊어 보냄
 TEMPLATE_ONLY = ("react", "short_ask", "why", "fu_ack", "chime_q", "nudge", "end_react", "night_mafia", "spy_contact")   # Claude 없이 바로
 BIG_INTENTS = ("defend", "last_defense", "counter", "claim_mafia", "claim_clear")             # 판을 바꾸는 말 → 큰 모델
@@ -612,6 +727,8 @@ def clean_line(line, name, limit=None):
     line = line.strip('"').strip("“”").strip()
     if leaked(line, name):                        # 지시문·메모가 그대로 나온 경우 → 기본 대사로
         return ""
+    if SWEAR_RE.search(line):                     # AI 는 욕하지 않음
+        return ""
     if not hangul_ok(line):
         return ""
     lim = limit or MAX_LEN
@@ -628,7 +745,9 @@ TIMES = dict(intro=8, selfintro=90, night=30, morning=7, day=100, vote=25, defen
 FAST = dict(intro=3, selfintro=12, night=8, morning=4, day=20, vote=10, defense=6, judge=5, verdict=4)   # 살아있는 사람이 없을 때
 MAX_LEN = 32          # AI 한 마디 최대 글자 수
 DIRECT = ("reply", "defend", "last_defense", "counter", "claim_mafia", "claim_clear", "self_intro")   # 먼저 내보낼 말
-DIRECT = DIRECT + FOLLOW_INTENTS + ANSWER_INTENTS + ("ans_clear", "ans_hold", "ans_concede", "ans_stuck", "ans_about_yes", "ans_about_no", "ans_vote", "ans_claim_yes", "ans_claim_no")
+DIRECT = DIRECT + ("tp_snap1", "tp_snap2", "tp_snap3", "tp_calm1", "tp_calm2", "tp_calm3", "tp_laugh1", "tp_laugh2",
+                   "tp_laugh3", "tp_hurt1", "tp_hurt2", "tp_hurt3", "tp_cold2", "tp_cold3", "tp_counter1",
+                   "tp_counter2", "tp_counter3", "tp_fluster1", "tp_fluster2", "tp_fluster3") + FOLLOW_INTENTS + ANSWER_INTENTS + ("ans_clear", "ans_hold", "ans_concede", "ans_stuck", "ans_about_yes", "ans_about_no", "ans_vote", "ans_claim_yes", "ans_claim_no")
 
 
 def assign_roles(order, roles, humans, history, rng):
@@ -714,6 +833,9 @@ class Game:
         self.last_react = -99
         self.pester = {}                                     # (day, 사람) → 재촉·질문 받은 수
         self.next_depth = {}                                 # 다음 질문이 대화 줄기의 몇 번째 꼬리인지
+        self.fight_t = -99
+        self._seq_t = {}                                   # 구경꾼 반응(말림·편들기·부추김) 마지막 시각
+        self.ai_fights = {}                                  # day → AI 끼리 긁은 횟수 (끝없는 싸움 방지)
         self._pseq = 0
         self.now = now
         self.brains = {pid: Brain(self, pid) for pid in self.order if self.players[pid].ai}
@@ -747,6 +869,7 @@ class Game:
         return ROLE_INFO[self.players[pid].role][0]
 
     def post(self, kind, text, who=None, scope="all"):
+        self.__dict__.setdefault("_seq_t", {})[self.seq + 1] = self.now
         """kind: sys|say|mafia|dead. scope: all|mafia|dead|to:<pid>"""
         self.seq += 1
         self.chat.append(dict(s=self.seq, k=kind, w=who, n=self.name(who) if who else "", x=text, sc=scope))
@@ -879,7 +1002,14 @@ class Game:
         ready = [o for o in self.outq if o["ready"] <= now]
         if not ready:
             return
-        o = min(ready, key=lambda o: (o["prio"], o["born"]))
+        # 사람에게 하는 대답이 제일 먼저, 그다음 해명·꼬리, 감정 반응, 잡담 순
+        def rank(o):
+            it = o.get("intent") or ""
+            to = o.get("to")
+            to_h = isinstance(to, tuple) and to[0] in self.players and not self.players[to[0]].ai
+            first = it in ("reply",) or it.startswith("ans_") or to_h
+            return (o["prio"], 0 if first else (2 if it.startswith("tp_") else 1), o["born"])
+        o = min(ready, key=rank)
         # 대답·해명은 1.2초만 띄우면 끼어들 수 있고, 잡담은 정해진 순번(2.5~4초 간격)을 기다림
         if now < (self.ai_post_t + 1.2 if o["prio"] == 0 else self.next_ai_slot):
             return
@@ -1307,6 +1437,7 @@ class Game:
         self.post("say", text, pid, "all")
         self._analyze(pid, text)
         self._track_q(pid, text)
+        self._provoke(pid, text)
         if not p.ai:
             self.next_ai_slot = max(self.next_ai_slot, self.now + 2.5)   # 사람 말 뒤엔 잠깐 숨 고르기
             self.ai_chain = 0
@@ -1369,6 +1500,38 @@ class Game:
                 if q.get("ans"):
                     out.append(f"{self.name(q['t'])}: {q['ans']}")
         return out[-6:]
+
+    def _provoke(self, pid, text):
+        """욕·비아냥·깐족 → 들은 AI 가 성격대로 반응, 구경꾼도 한 명쯤 끼어듦."""
+        if self.phase not in ("day", "vote", "judge", "defense"):
+            return
+        sev, kind = provocation(text)
+        if not sev:
+            return
+        p = self.players[pid]
+        if p.ai:
+            n = self.ai_fights.get(self.day, 0)
+            if n >= 8:
+                return
+            self.ai_fights[self.day] = n + 1
+            sev *= .7                                         # AI 끼리는 살짝 약하게
+        targets = [t for t in self.mentions(text, pid) if t in self.brains and self.players[t].alive]
+        if not targets:                                       # 이름 없이 '찔리냐 ㅋㅋ' → 방금 나랑 말한 AI
+            for m in reversed(self.chat[-8:]):
+                if m["k"] == "say" and m["w"] and m["w"] != pid and m["w"] in self.brains \
+                        and self.players[m["w"]].alive and self.now - self._seq_t.get(m["s"], -99) < 12:
+                    targets = [m["w"]]
+                    break
+        for t in targets[:2]:
+            self.brains[t].on_provoked(pid, text, sev, kind)
+        victim = targets[0] if targets else None
+        if victim and sev >= .9 and self.now - self.fight_t > 15:
+            bs = [b for b in self._live_brains() if b.id not in (pid, victim) and b.temper["side"] != "none"]
+            if bs and self.rng.random() < .55:
+                self.fight_t = self.now
+                b = self.rng.choice(bs)
+                self.schedule(self.rng.uniform(3, 5.5), lambda: self.phase in ("day", "vote") and b.p.alive
+                              and self.ai_line(b.id, "tp_" + b.temper["side"], x=pid, v=victim, q=text))
 
     def _ghost_reply(self, pid, text):
         """죽은 사람이 유령 채팅에 말하면, 죽은 AI 가 대답 (영매는 듣기만)."""
@@ -1433,6 +1596,9 @@ class Game:
                 self.heat[t] += 1.0
                 self.accused_today.setdefault(pid, set()).add(t)
                 self.talk_log.append((self.day, "acc", pid, t, text[:60]))
+                n = sum(1 for d_, k_, a_, t_, _ in self.talk_log if d_ == self.day and k_ == "acc" and a_ == pid and t_ == t)
+                if n >= 2 and t in self.brains and self.players[t].alive:
+                    self.brains[t].on_provoked(pid, text, .45 * (n - 1), "push")   # 자꾸 나만 몰아감
             for b in self._live_brains():
                 b.on_accuse(pid, who)
         elif who and dfn:
@@ -1513,7 +1679,7 @@ class Game:
         seen.append(best[0])
         return best[1]
 
-    def ai_line(self, pid, intent, x=None, d=None, scope="all", q="", fb=None, y=None, z=None, r_=""):
+    def ai_line(self, pid, intent, x=None, d=None, scope="all", q="", fb=None, y=None, z=None, r_="", v=None):
         p = self.players[pid]
         base = fb if (intent == "chat" and fb) else intent
         if intent == "reply":                         # 대체 대사: 의심받았으면 해명, 아니면 '모르겠다'
@@ -1525,9 +1691,10 @@ class Game:
         if intent in ("ans_reason", "ans_plain") and y:
             tt = y                                         # '왜 Y야?' 에 대한 답 → Y 얘기
         fmt = dict(x=self.name(x) if x else "", d=self.name(d) if d else "", y=self.name(y) if y else "",
-                   z=self.name(z) if z else "", t=self.name(tt) if tt else (self.name(y) if y else ""), r=r_)
+                   z=self.name(z) if z else "", t=self.name(tt) if tt else (self.name(y) if y else ""), r=r_,
+                   v=self.name(v) if v else "")
         text = self.pick_text(pid, base, fmt)
-        if base in LONG_INTENTS:
+        if base in LONG_INTENTS or heated(base):
             text = "\n".join(split_two(text))
         kind = {"mafia": "mafia", "dead": "dead"}.get(scope, "say")
         phase, day = self.phase, self.day
@@ -1540,7 +1707,7 @@ class Game:
         cool = getattr(self.stylist, "cool_until", 0) if self.stylist else 0
         use_llm = (self.stylist and self.llm_busy < 6 and intent not in TEMPLATE_ONLY and time.time() >= cool)
         if use_llm:
-            req = self.llm_request(pid, intent, x, d, scope, q, text.replace("\n", " "), y=y, z=z, r_=r_)
+            req = self.llm_request(pid, intent, x, d, scope, q, text.replace("\n", " "), y=y, z=z, r_=r_, v=v)
             done = {"v": False}
             self.llm_busy += 1
             big = intent in BIG_INTENTS
@@ -1563,7 +1730,7 @@ class Game:
                     said, why = "", "team-leak"
                 if said and intent not in DIRECT and self.too_similar(said, pid):
                     said, why = "", "similar"
-                if said and intent in LONG_INTENTS:
+                if said and (intent in LONG_INTENTS or heated(intent)):
                     said = "\n".join(split_two(said))
                 self.ai_log.append(dict(t=round(self.now, 1), day=day, ph=phase, who=p.name, intent=intent,
                                         src=why, x=(said or text).replace("\n", " / ")))
@@ -1576,7 +1743,7 @@ class Game:
                                 x=text.replace("\n", " / ")))
         self.inbox.put((pid, text, scope, kind, phase, day, intent, to))
 
-    def llm_request(self, pid, intent, x, d, scope, q, default, y=None, z=None, r_=""):
+    def llm_request(self, pid, intent, x, d, scope, q, default, y=None, z=None, r_="", v=None):
         """Claude 에게 넘길 상황 정보 (그 AI 가 알 수 있는 것만)."""
         p = self.players[pid]
         pers = PERSONAS.get(p.persona, {})
@@ -1603,7 +1770,9 @@ class Game:
         if intent in ("ans_reason", "ans_plain") and y:
             tt = y
         fmt = dict(x=self.name(x) if x else "", d=self.name(d) if d else "", q=q[:120], y=self.name(y) if y else "",
-                   z=self.name(z) if z else "", t=self.name(tt) if tt else "", r=r_)
+                   z=self.name(z) if z else "", t=self.name(tt) if tt else "", r=r_, v=self.name(v) if v else "")
+        mood = [f"{self.name(o)}에게 {'살짝 기분 나쁨' if lv == 1 else '화남' if lv == 2 else '많이 흥분함'}"
+                for o, lv in (b.moods() if b else [])]
         openq = [f"{self.name(o['a'])}→{self.name(o['t'])}: {o['q']}" for o in self.questions
                  if not o["done"] and o["day"] == self.day][-4:]
         mine_q = [f"{self.name(o['a'])}이(가) 나에게: {o['q']}" for o in self.questions
@@ -1623,7 +1792,7 @@ class Game:
                     speech=self.speech(pid), how=STYLES.get(p.persona, DEFAULT_STYLE)["how"],
                     skill=STYLES.get(p.persona, DEFAULT_STYLE)["skill"], thread=self.thread_text(pid, x), length=LEN_HINT.get(intent, "아주 짧게, 보통 한두 마디. 근거를 댈 때만 한 문장"),
                     open_q=openq, my_q=mine_q, talk_log=tlog, my_past=my_past, ends=ends,
-                    big=intent in BIG_INTENTS, dead=not p.alive)
+                    big=intent in BIG_INTENTS, dead=not p.alive, mood=mood)
 
     def _ai_post(self, pid, text, scope, kind, to=None):
         p = self.players[pid]
@@ -1647,6 +1816,7 @@ class Game:
         self.ai_streak += 1
         self._analyze(pid, text)
         self._track_q(pid, text, to)
+        self._provoke(pid, text)
         # 리액션: 의심·경찰 주장 같은 큰 말에는 다른 AI 한 명이 짧게 반응 (템플릿, 4초에 한 번)
         big = CLAIM_RE.search(text) or (self.mentions(text, pid) and any(w in text for w in ACCUSE_W))
         if big and self.phase == "day" and self.now - self.last_react > 4 and self.rng.random() < .45:
@@ -1746,6 +1916,11 @@ class Brain:
         self.spoke = 0
         self.loose = False          # mix 캐릭터: 상대가 반말하면 말 놓음
         self.style = STYLES.get(self.p.persona, DEFAULT_STYLE)
+        self.temper = TEMPER.get(self.p.persona, DEFAULT_TEMPER)
+        self.anger = {}             # 상대 → (화, 시각)  시간이 지나면 식음
+        self.peak = {}              # 상대 → 오늘 최고 단계
+        self.talked_back = {}       # (day, 상대) → 대꾸한 횟수
+        self.sulk_until = -99
         self.pick_y = None
         self.hist = {}              # day → 그날 내가 가장 의심한 사람
         self.changed = set()
@@ -1931,6 +2106,13 @@ class Brain:
         if g.day == 1 and first and not g.stylist and self.rng.random() < .55:
             g.ai_line(self.id, "open")
             return
+        if g.now < self.sulk_until and self.rng.random() < .75:
+            return                                            # 삐져서 조용
+        mad = [(o, lv) for o, lv in self.moods() if lv >= 2]
+        if mad and self.rng.random() < .45:
+            o = max(mad, key=lambda m: m[1])[0]
+            g.ai_line(self.id, "accuse", x=o)               # 화난 상대를 계속 걸고 넘어짐
+            return
         hs = [p.id for p in g.alive_list() if not p.ai]
         hs = [h for h in hs if g.pester_ok(h)]
         if g.ai_streak >= 5 and hs:                          # AI 끼리만 떠들면 사람에게 말 돌리기
@@ -2037,6 +2219,8 @@ class Brain:
         g = self.g
         if not self.p.alive:
             return
+        if provocation(text)[0] and "?" not in text.replace("찔리냐?", "").replace("찔려?", ""):
+            return                                        # 긁는 말은 감정 반응(on_provoked)이 대신 받음
         fq = any(q["a"] == caller and q["t"] == self.id and q.get("intent") and g.now - q["at"] < 6
                  for q in g.questions[-6:])
         if g.now - getattr(self, "last_called", -99) < (1.5 if fq else 6):
@@ -2079,6 +2263,63 @@ class Brain:
                        lambda: self.p.alive and g.ai_line(self.id, kind, x=caller, q=text, **kw))
             return
         g.schedule(delay + (0 if g.stylist else .6), lambda: self.p.alive and g.ai_line(self.id, "reply", x=caller, q=text))
+
+    # ---------------------------------------------------------- 감정
+    def anger_of(self, o):
+        a, t = self.anger.get(o, (0, 0))
+        return a * math.exp(-(self.g.now - t) / 45)          # 45초쯤이면 많이 식음
+
+    def level(self, o):
+        a = self.anger_of(o)
+        return 0 if a < .35 else 1 if a < 1.2 else 2 if a < 2.4 else 3
+
+    def moods(self):
+        return [(o, self.level(o)) for o in list(self.anger) if self.level(o) >= 1 and self.g.players[o].alive]
+
+    def on_provoked(self, who, text, sev, kind):
+        """긁힘: 성격대로 화가 쌓이고, 단계에 맞게 반응 (무시·웃어넘김·받아침·상처·역공…)."""
+        g, tp = self.g, self.temper
+        if who == self.id or not self.p.alive:
+            return
+        a = self.anger_of(who) + sev * (.4 + tp["sens"])
+        self.anger[who] = (a, g.now)
+        lv = self.level(who)
+        if lv == 0:
+            return
+        self.peak[who] = max(self.peak.get(who, 0), lv)
+        if not self.mafia_side:                               # 긁은 사람은 괜히 더 의심스러움
+            self.sus[who] = self.sus.get(who, 0) + .2 * lv
+        key = (g.day, who)
+        n = self.talked_back.get(key, 0)
+        if n >= tp["cap"]:
+            return                                            # 이 사람 말엔 더 대꾸 안 함
+        typ = tp["low"] if lv < 3 else tp["high"]
+        if typ == "cold" and lv == 1:
+            return                                            # 과묵한 사람은 처음엔 그냥 무시
+        if kind == "push" and lv == 1 and self.rng.random() < .6:
+            return                                            # 한두 번 몰리는 건 넘김
+        self.talked_back[key] = n + 1
+        if tp["sulk"] and typ == "hurt" and lv >= 2:
+            self.sulk_until = g.now + 45                      # 상처받으면 한동안 조용
+        delay = self.rng.uniform(.7, 1.4) if lv == 3 else self.rng.uniform(1.4, 2.8)
+        intent = f"tp_{typ}{lv}"
+        if intent not in GENERIC:
+            intent = f"tp_{typ}{min(lv, 2)}" if f"tp_{typ}{min(lv, 2)}" in GENERIC else "tp_snap" + str(lv)
+        g.schedule(delay, lambda: self.p.alive and g.phase not in ("night", "end")
+                   and g.ai_line(self.id, intent, x=who, q=text))
+        if lv == 3 and typ in ("snap", "counter", "calm") and self.rng.random() < .45:
+            # 흥분하면 한 마디로 안 끝남 → 이어서 몰아붙이기
+            g.schedule(delay + self.rng.uniform(3.5, 5.5), lambda: g.phase in ("day", "vote") and self.p.alive
+                       and g.ai_line(self.id, "accuse", x=who))
+        if tp["sorry"] and lv >= 2:
+            g.schedule(55 + self.rng.uniform(0, 20), lambda: self._maybe_sorry(who))
+
+    def _maybe_sorry(self, who):
+        g = self.g
+        if (g.phase in ("day", "vote") and self.p.alive and g.players[who].alive and self.level(who) <= 1
+                and self.peak.get(who, 0) >= 2 and self.rng.random() < self.temper["sorry"]):
+            self.peak[who] = 0
+            g.ai_line(self.id, "tp_sorry", x=who)
 
     # ---------------------------------------------------------- 대화 방식
     def wpick(self, weights):
@@ -2570,6 +2811,8 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5", model_big=None):
             lines.append("지난 투표 기록: " + " / ".join(req["votes"]))
         if req.get("talk_log"):
             lines.append("오늘 의심·해명: " + " / ".join(req["talk_log"]))
+        if req.get("mood"):
+            lines.append("내 기분: " + ", ".join(req["mood"]) + " (말투에 자연스럽게 묻어나게, 욕은 금지)")
         if req.get("my_past"):
             lines.append("내가 전에 한 것: " + ", ".join(req["my_past"]))
         if req["suspects"]:
