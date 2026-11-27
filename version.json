@@ -1,11 +1,11 @@
 {
- "version": 8,
- "note": "화이트 테마·반응형 채팅창·투명도, 바탕화면 무대·대형·묘지",
+ "version": 9,
+ "note": "직업 4종 추가(군인·정치인·영매·마담), 직업판",
  "files": {
-  "mafia.py": "7791855de94f4db21063157c3705d8d5b844d22f639f03a960a9a32cdb974cf4",
-  "mafia_core.py": "63ae298eb8c0755fe3978ab7d95ee9c397246bc43cc3ad1935404360e912f744",
+  "mafia.py": "e88570a5796945303cec8e6fe8f9b815eb7b614a57e67d54baee087adc11408c",
+  "mafia_core.py": "56fa3dee74996deb122c0df40ea6e54acf81899394fb1c692a860b86fe8db8d5",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "a4a9c0c4437fc88b78692ead7e77b1bb5d6457518395d48d8826858ddd72ecad"
+  "안내.txt": "758094b6afa201cf21e56a6bda64c4e1b169fff9f99cb7d21025e1a1624dda72"
  }
 }

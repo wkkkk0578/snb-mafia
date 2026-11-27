@@ -17,27 +17,43 @@ ROLE_INFO = {
     "경찰": ("town", "밤마다 한 명을 조사해 마피아인지 아닌지 알아냅니다. (스파이는 '마피아 아님'으로 나와요)"),
     "의사": ("town", "밤마다 한 명을 골라 마피아의 공격에서 살립니다. 자신도 고를 수 있어요."),
     "기자": ("town", "게임 중 딱 한 번, 둘째 밤부터 한 명을 취재해 다음 날 아침 그 사람의 직업을 모두에게 공개합니다."),
+    "군인": ("town", "마피아의 공격을 한 번 버텨 냅니다. 버티면 군인임이 모두에게 공개돼요."),
+    "정치인": ("town", "투표할 때 2표로 계산되고, 투표로는 처형되지 않습니다. (처형될 상황이면 정치인임이 공개돼요)"),
+    "영매": ("town", "밤마다 유령 채팅을 보고 죽은 사람들과 대화할 수 있습니다. (낮에는 유령 채팅을 읽기만)"),
+    "마담": ("mafia", "마피아 편. 낮에 한 명을 유혹하면 그 사람은 그날 밤 능력을 못 씁니다. 처음부터 마피아와 서로 알아요."),
     "시민": ("town", "능력은 없지만 토론과 투표로 마피아를 찾아냅니다."),
 }
-ROLE_ICON = {"마피아": "🔪", "스파이": "🕶", "경찰": "🚓", "의사": "💉", "기자": "📰", "시민": "🙂"}
-MAFIA_TEAM = ("마피아", "스파이")
+ROLE_ICON = {"마피아": "🔪", "스파이": "🕶", "마담": "💋", "경찰": "🚓", "의사": "💉", "기자": "📰",
+             "군인": "🪖", "정치인": "🏛", "영매": "🔮", "시민": "🙂"}
+MAFIA_TEAM = ("마피아", "스파이", "마담")
 MIN_PLAYERS, MAX_PLAYERS = 4, 12
+# 켜고 끌 수 있는 직업 → 들어가는 최소 인원 (넣는 순서대로)
+OPTIONAL = {"기자": 6, "스파이": 7, "군인": 8, "마담": 10, "정치인": 10, "영매": 11}
+BOARD_ORDER = ["마피아", "스파이", "마담", "경찰", "의사", "기자", "군인", "정치인", "영매", "시민"]
 
 
-def role_plan(n):
-    """인원수 → 직업 목록. 마피아 > 경찰·의사 > 기자 > 스파이 순으로 필수 직업을 남긴다."""
+def team_size(n):
+    """마피아 팀 인원 (마피아 + 스파이 + 마담)."""
+    return 1 if n <= 6 else (2 if n <= 9 else (3 if n <= 11 else 4))
+
+
+def role_plan(n, off=()):
+    """인원수 → 직업 목록. off: 끈 직업. 끈 시민 팀 직업 자리는 시민, 마피아 팀 자리는 마피아."""
     n = max(MIN_PLAYERS, min(MAX_PLAYERS, int(n)))
-    mafia = 1 if n <= 8 else (2 if n <= 11 else 3)
-    spy = 1 if n >= 7 else 0
-    reporter = 1 if n >= 6 else 0
-    roles = ["마피아"] * mafia + ["스파이"] * spy + ["경찰", "의사"] + ["기자"] * reporter
+    on = lambda r: r not in off and n >= OPTIONAL[r]   # noqa: E731
+    T = team_size(n)
+    team = [r for r in ("스파이", "마담") if on(r)]
+    mafia = max(2 if n >= 12 else 1, T - len(team))
+    team = team[:max(0, T - mafia)]
+    town = ["경찰", "의사"] + [r for r in ("기자", "군인", "정치인", "영매") if on(r)]
+    roles = ["마피아"] * mafia + team + town
     return roles + ["시민"] * (n - len(roles))
 
 
-def plan_text(n):
-    roles = role_plan(n)
+def plan_text(n, off=()):
+    roles = role_plan(n, off)
     out = []
-    for r in ROLE_INFO:
+    for r in BOARD_ORDER:
         c = roles.count(r)
         if c:
             out.append(r if c == 1 else f"{r}{c}")
@@ -219,7 +235,7 @@ class Player:
 class Game:
     """방장 PC에서 도는 한 판. tick(now) 를 주기적으로 부르면 시간에 따라 진행된다."""
 
-    def __init__(self, members, now=0.0, rng=None, times=None, reveal_on_death=True, stylist=None):
+    def __init__(self, members, now=0.0, rng=None, times=None, reveal_on_death=True, stylist=None, off=()):
         """members: [{"id","name","ai":bool,"persona":이름 or None}]"""
         self.rng = rng or random.Random()
         self.times = dict(TIMES, **(times or {}))
@@ -231,7 +247,8 @@ class Game:
             self.players[m["id"]] = Player(m["id"], m["name"], m.get("ai", False), m.get("persona"),
                                            COLORS[i % len(COLORS)], m.get("ch"))
         self.order = [m["id"] for m in members]
-        roles = role_plan(len(members))
+        self.off = tuple(off)
+        roles = role_plan(len(members), self.off)
         self.rng.shuffle(roles)
         for pid, r in zip(self.order, roles):
             self.players[pid].role = r
@@ -247,23 +264,23 @@ class Game:
         self.used = {}                                       # AI별 최근 쓴 문장 틀
         self.intro_order, self.intro_i, self.intro_tok, self.intro_cur = [], -1, 0, None   # 자기소개 순서
         self.accused, self.judge = None, {}                  # 최후 변론 대상 / 찬반 (pid → True/False)
-        self.vote_log, self.ai_chain, self.day_seq = [], 0, 0                 # 공개된 투표 기록 / AI 끼리 연달아 주고받은 횟수
+        self.vote_log, self.ai_chain, self.day_seq = [], 0, 0
+        self.shield = {p.id for p in self.players.values() if p.role == "군인"}   # 군인 방패 (1회)
+        self.seduced, self.seduced_by = None, None                              # 마담이 오늘 유혹한 사람                 # 공개된 투표 기록 / AI 끼리 연달아 주고받은 횟수
         self.outq, self.next_ai_slot, self.ai_last, self.ai_post_t = [], 0.0, {}, 0.0   # AI 말 대기열 · 다음 말 가능 시각 · AI별 마지막 말
         self.llm_busy = 0
         self.dead_talk = {}                                  # 날짜별 죽음 반응 수
         self._pseq = 0
         self.now = now
         self.brains = {pid: Brain(self, pid) for pid in self.order if self.players[pid].ai}
-        mafia = [p for p in self.alive_list() if p.role == "마피아"]
-        self.sys("🎲 게임 시작! " + plan_text(len(members)) + f" — 총 {len(members)}명")
+        self.sys("🎲 게임 시작! " + plan_text(len(members), self.off) + f" — 총 {len(members)}명")
         for p in self.players.values():
             self.sys(f"당신의 직업은 [{p.role}] 입니다. {ROLE_INFO[p.role][1]}", to=p.id)
-            if p.role == "마피아" and len(mafia) > 1:
-                mates = ", ".join(q.name for q in mafia if q.id != p.id)
-                self.sys(f"🔪 마피아 동료: {mates}", to=p.id)
-                for q in mafia:
-                    if q.id != p.id:
-                        self.knowledge[p.id][q.id] = "마피아"
+            team = [q for q in self.players.values() if q.role in ("마피아", "마담") and q.id != p.id]
+            if p.role in ("마피아", "마담") and team:
+                self.sys("🔪 마피아 동료: " + ", ".join(f"{q.name}({q.role})" for q in team), to=p.id)
+                for q in team:
+                    self.knowledge[p.id][q.id] = q.role
         self._set_phase("intro", now)
 
     # ------------------------------------------------ 기본 도구
@@ -277,7 +294,7 @@ class Game:
         return self.players[pid].name if pid in self.players else "?"
 
     def mafia_chat_ids(self):
-        ids = {p.id for p in self.players.values() if p.role == "마피아"}
+        ids = {p.id for p in self.players.values() if p.role in ("마피아", "마담")}
         if self.spy_contact:
             ids |= {p.id for p in self.players.values() if p.role == "스파이"}
         return ids
@@ -412,19 +429,36 @@ class Game:
     def _can_act(self, p):
         if not p.alive:
             return False
+        if self.phase == "night" and p.id == self.seduced:
+            return False
         if p.role == "기자":
             return not self.reporter_used and self.day >= 2
         return p.role in ("마피아", "의사", "경찰", "스파이")
 
     def _begin_night(self, now):
         self.night, self.mafia_pick = {}, None
+        if self.seduced and self.players[self.seduced].alive:
+            self.sys("💋 마담에게 유혹당해 오늘 밤은 능력을 쓸 수 없어요…", to=self.seduced)
         self._set_phase("night", now)
         self.sys(f"🌙 {self.day}번째 밤이 되었습니다. 능력이 있는 사람은 대상을 고르세요.")
         for b in self._live_brains():
             b.on_night()
 
+    def seduce(self, pid, target):
+        """마담: 낮(토론·투표)에 한 명 유혹 → 그날 밤 능력 봉인. 하루 한 번."""
+        p = self.players.get(pid)
+        if (self.phase not in ("day", "vote") or not p or not p.alive or p.role != "마담"
+                or self.seduced_by == pid or target not in self.targets(pid)):
+            return False
+        self.seduced, self.seduced_by = target, pid
+        self.version += 1
+        self.post("sys", f"💋 {p.name}님이 {self.name(target)}님을 유혹했습니다. 오늘 밤 그 사람은 능력을 못 써요.",
+                  scope="mafia")
+        return True
+
     def _begin_day(self, now):
         self.day += 1                                         # 낮이 오면 하루가 시작 (밤 N = 낮 N 다음 밤)
+        self.seduced, self.seduced_by = None, None
         self.day_seq = self.seq
         self.ready, self.accused_today = set(), {}
         for k in self.heat:
@@ -510,7 +544,12 @@ class Game:
         ys = ", ".join(self.name(i) for i, v in self.judge.items() if v)
         ns = ", ".join(self.name(i) for i, v in self.judge.items() if v is False)
         self.sys(f"📊 찬반 결과: 찬성 {yes}" + (f"({ys})" if ys else "") + f" · 반대 {no}" + (f"({ns})" if ns else ""))
-        if yes > no:
+        if yes > no and self.players[t].role == "정치인":
+            self.players[t].revealed = True
+            self.sys(f"🏛 {self.name(t)}님은 정치인이라 투표로 처형되지 않습니다!")
+            for b in self.brains.values():
+                b.on_public_role(t)
+        elif yes > no:
             self._kill(t, "vote")
         else:
             self.sys(f"🙏 {self.name(t)}님이 살아남았습니다!")
@@ -542,6 +581,14 @@ class Game:
         heals = {t for i, t in self.night.items() if self.players[i].role == "의사" and t}
         if kill and kill in heals:
             self.sys(f"💉 {self.name(kill)}님이 마피아의 공격을 받았지만 의사의 치료로 살아났습니다!")
+            kill = None
+        elif kill and kill in self.shield:
+            self.shield.discard(kill)
+            kp = self.players[kill]
+            kp.revealed = True
+            self.sys(f"🪖 {kp.name}님이 마피아의 공격을 버텨 냈습니다! {kp.name}님은 군인입니다.")
+            for b in self.brains.values():
+                b.on_public_role(kill)
             kill = None
         elif kill:
             self._kill(kill, "mafia")
@@ -577,9 +624,9 @@ class Game:
 
     def _resolve_vote(self):
         tally = {}
-        for t in self.votes.values():
+        for v, t in self.votes.items():
             if t:
-                tally[t] = tally.get(t, 0) + 1
+                tally[t] = tally.get(t, 0) + self.vote_weight(v)
         if not tally:
             self.sys("모두 기권했습니다. 아무도 처형되지 않았어요.")
             return False
@@ -587,7 +634,7 @@ class Game:
         best = [t for t, c in tally.items() if c == top]
         voters = {}
         for v, t in self.votes.items():
-            voters.setdefault(t, []).append(self.name(v))
+            voters.setdefault(t, []).append(self.name(v) + ("×2" if self.vote_weight(v) == 2 and t else ""))
             self.vote_log.append((self.day, v, t))
         summary = " / ".join(f"{self.name(t)} {c}표({', '.join(voters[t])})"
                              for t, c in sorted(tally.items(), key=lambda x: -x[1]))
@@ -598,6 +645,9 @@ class Game:
             return False
         self.accused = best[0]
         return True
+
+    def vote_weight(self, pid):
+        return 2 if self.players[pid].role == "정치인" else 1
 
     def _check_win(self):
         alive = self.alive_list()
@@ -621,10 +671,14 @@ class Game:
     # ------------------------------------------------ 플레이어 행동
     def targets(self, pid):
         p = self.players.get(pid)
-        if not p or not p.alive or self.phase not in ("night", "vote"):
+        if not p or not p.alive or self.phase not in ("night", "vote", "day"):
             return []
         alive = [q.id for q in self.alive_list()]
-        if self.phase == "vote":
+        if self.phase == "day":
+            if p.role == "마담" and self.seduced_by != pid:
+                return [t for t in alive if t != pid and self.players[t].role not in ("마피아", "마담")]
+            return []
+        if self.phase == "vote" and not (p.role == "마담" and self.seduced_by != pid and self._seduce_mode(pid)):
             return [t for t in alive if t != pid]
         if not self._can_act(p):
             return []
@@ -633,6 +687,9 @@ class Game:
         if p.role == "의사":
             return alive
         return [t for t in alive if t != pid]
+
+    def _seduce_mode(self, pid):
+        return False                                   # 투표 시간엔 클릭 = 투표 (유혹은 토론 때)
 
     def night_action(self, pid, target):
         """target=None 이면 이번 밤 능력 안 씀."""
@@ -706,6 +763,9 @@ class Game:
             self.post("say", text, pid, "all")
             return True
         if not p.alive:
+            self.post("dead", text, pid, "dead")
+            return True
+        if self.phase == "night" and p.role == "영매":
             self.post("dead", text, pid, "dead")
             return True
         if self.phase == "night":
@@ -883,9 +943,9 @@ class Game:
         rows = []
         tally = {}
         if self.phase in ("vote", "defense", "judge", "verdict"):
-            for t in self.votes.values():
+            for v, t in self.votes.items():
                 if t:
-                    tally[t] = tally.get(t, 0) + 1
+                    tally[t] = tally.get(t, 0) + self.vote_weight(v)
         for i in self.order:
             p = self.players[i]
             role = p.role if (ended or p.revealed or i == pid) else None
@@ -902,13 +962,13 @@ class Game:
             sc = m["sc"]
             ok = (sc == "all" or ended or sc == f"to:{pid}"
                   or (sc == "mafia" and pid in mafia_ids)
-                  or (sc == "dead" and me is not None and not me.alive))
+                  or (sc == "dead" and me is not None and (not me.alive or me.role == "영매")))
             if ok:
                 vis.append(dict(s=m["s"], k=m["k"], n=m["n"], x=m["x"], w=m["w"], me=m["w"] == pid and pid is not None,
                                 p=sc.startswith("to:")))
         v = dict(phase=self.phase, day=self.day, remain=max(0, int(self.deadline - now + .99)),
                  total=int(self._dur(self.phase)) if self.phase != "end" else 0,
-                 players=rows, chat=vis[-80:], winner=self.winner, plan=plan_text(len(self.order)),
+                 players=rows, chat=vis[-80:], winner=self.winner, plan=plan_text(len(self.order), self.off),
                  accused=self.name(self.accused) if self.accused else "",
                  turn=self.name(self.intro_cur) if self.phase == "selfintro" and self.intro_cur else "")
         if me:
@@ -917,17 +977,21 @@ class Game:
                 act = {"마피아": "제거할 사람을 고르세요", "의사": "살릴 사람을 고르세요",
                        "경찰": "조사할 사람을 고르세요", "스파이": "직업을 알아낼 사람을 고르세요",
                        "기자": "취재할 사람을 고르세요 (게임 중 1번)"}[me.role]
+            elif self.phase == "day" and me.alive and me.role == "마담" and self.seduced_by != pid:
+                act = "💋 유혹할 사람을 고르세요 (그 사람은 오늘 밤 능력을 못 써요)"
             elif self.phase == "vote" and me.alive:
                 act = "처형할 사람에게 투표하세요"
             elif self.phase == "judge" and me.alive and pid != self.accused:
                 act = "찬성 / 반대를 눌러 주세요"
             v["me"] = dict(id=pid, role=me.role, desc=ROLE_INFO[me.role][1], alive=me.alive,
                            team=self.team_of(pid), act=act, targets=self.targets(pid),
-                           pick=self.night.get(pid) if self.phase == "night" else self.votes.get(pid),
+                           pick=(self.night.get(pid) if self.phase == "night" else
+                                 self.seduced if (self.phase == "day" and self.seduced_by == pid) else self.votes.get(pid)),
                            picked=(pid in self.night) if self.phase == "night" else (pid in self.votes),
                            ready=pid in self.ready, mchat=pid in mafia_ids, judge=self.judge.get(pid),
                            accused=pid == self.accused, myturn=(self.phase == "selfintro" and pid == self.intro_cur),
-                           can_chat=(ended or not me.alive or ((self.phase != "night" or pid in mafia_ids)
+                           medium=me.role == "영매",
+                           can_chat=(ended or not me.alive or ((self.phase != "night" or pid in mafia_ids or me.role == "영매")
                                                               and (self.phase != "defense" or pid == self.accused))))
         return v
 
@@ -959,8 +1023,8 @@ class Brain:
 
     def team(self):
         g = self.g
-        if self.role == "마피아":
-            return {p.id for p in g.players.values() if p.role == "마피아"} | (
+        if self.role in ("마피아", "마담"):
+            return {p.id for p in g.players.values() if p.role in ("마피아", "마담")} | (
                 {p.id for p in g.players.values() if p.role == "스파이"} if g.spy_contact else set())
         if self.role == "스파이":
             return {self.id} | ({p.id for p in g.players.values() if p.role == "마피아"} if g.spy_contact else set())
@@ -985,6 +1049,8 @@ class Brain:
             s += 100
         elif r:
             s -= 100
+        if g.players[t].revealed and g.players[t].role == "정치인":
+            s -= 50
         return s
 
     def conf(self, t):
@@ -1077,6 +1143,8 @@ class Brain:
     # 낮
     def on_day(self):
         g = self.g
+        if self.role == "마담":                       # 토론 중에 한 명 유혹: 경찰이라 밝힌 사람 > 수상한 정보직
+            g.schedule(self.rng.uniform(12, 35), self._seduce)
         self.spoke = 0
         n = max(1, self.talk + self.rng.choice([-1, 0, 0]))
         span = max(12, g.times["day"] * .7) if g.humans_alive() else 12
@@ -1192,6 +1260,15 @@ class Brain:
             return                                    # on_accuse 가 해명함
         else:
             g.schedule(delay + .6, lambda: self.p.alive and g.ai_line(self.id, "reply", x=caller, q=text))
+
+    def _seduce(self):
+        g = self.g
+        c = g.targets(self.id)
+        if g.phase != "day" or not c:
+            return
+        claimed = [t for t in c if any(cl[1] == t for cl in g.claims)]
+        t = claimed[0] if claimed else max(c, key=lambda x: (self.truth.get(x) in ("경찰", "의사"), self.rng.random()))
+        g.seduce(self.id, t)
 
     def on_vote(self):
         g = self.g
@@ -1374,6 +1451,10 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
             "경찰": "조사 결과를 언제 밝힐지 전략적으로 판단. 밝히면 마피아에게 노려질 수 있음.",
             "의사": "정체를 숨기는 편이 유리. 꼭 필요할 때만 밝히기.",
             "기자": "정체는 숨기는 편이 유리.",
+            "군인": "마피아 공격을 한 번 버팀. 정체는 숨겨서 마피아가 헛수고하게 하는 게 유리.",
+            "정치인": "투표 2표, 투표로 처형 안 됨. 투표 흐름을 이끌 수 있음.",
+            "영매": "밤에 유령 채팅으로 죽은 사람 정보를 들음. 출처를 너무 드러내면 마피아에게 노려짐.",
+            "마담": "마피아 편이지만 시민인 척. 마피아 동료를 은근히 감싸기.",
             "시민": "추리로 마피아를 찾기. 말이 앞뒤가 안 맞는 사람, 남을 몰아가는 사람을 의심.",
         }.get(req["role"], "")
         system = (f"당신은 회사 동료들과 단톡방에서 마피아 게임 중인 '{req['name']}'입니다.\n"

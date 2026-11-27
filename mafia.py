@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.0"
+VERSION = "1.1"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -159,6 +159,7 @@ class Host:
         self.members = {me: dict(nick=nick, seen=time.time(), ch=core.pick_chars(1, self.chars)[0])}
         self.order = [me]
         self.total = 6
+        self.off = set()                                   # 방장이 끈 직업
         self.game, self.gid = None, ""
         self.last_lobby, self.sent_ver, self.last_views = 0, -1, 0
         self.lobby_chat = []
@@ -212,6 +213,8 @@ class Host:
             g.vote(pid, target)
         elif kind == "ready":
             g.set_ready(pid)
+        elif kind == "seduce":
+            g.seduce(pid, target)
         elif kind == "judge":
             g.judge_vote(pid, bool(target))
         elif kind == "say":
@@ -225,7 +228,7 @@ class Host:
                                used_chars={m["ch"] for m in mem})
         random.shuffle(mem)
         self.gid = uuid.uuid4().hex[:8]
-        self.game = core.Game(mem, now=time.time(), stylist=self.stylist)
+        self.game = core.Game(mem, now=time.time(), stylist=self.stylist, off=tuple(self.off))
         self.sent_ver = -1
         self.last_lobby = 0
 
@@ -236,7 +239,8 @@ class Host:
     def lobby_msg(self):
         return dict(t="lobby", host=self.me, gid=self.gid, started=bool(self.game), total=self.total, build=BUILD,
                     members=[dict(id=h, nick=self.nick_of(h), ch=self.members[h].get("ch")) for h in self.humans()],
-                    plan=core.plan_text(max(self.total, len(self.humans()), core.MIN_PLAYERS)),
+                    plan=core.plan_text(max(self.total, len(self.humans()), core.MIN_PLAYERS), self.off),
+                    off=sorted(self.off),
                     llm=bool(self.stylist))
 
     def tick(self, now):
@@ -475,6 +479,8 @@ class App:
         if mode != "join" and self.api_key():
             stylist = core.make_claude_stylist(self.api_key(), self.cfg.get("claude_model", "claude-haiku-5-5"))
         self.host = Host(self.me, nick, self.net, stylist) if mode != "join" else None
+        if self.host:
+            self.host.off = set(self.st.get("roles_off", [])) & set(core.OPTIONAL)
         if mode == "solo":
             self.host.total = 8
         self.lobby, self.view, self.gid, self.last_seq = None, None, "", 0
@@ -510,6 +516,8 @@ class App:
         self.b_chars = tk.Button(bar, text="", command=self.cycle_chars, bg=BG, fg=SUB, relief="flat", bd=0,
                                  font=self.f(9), cursor="hand2", activebackground=BG)
         self.b_chars.pack(side="right", padx=self.px(4))
+        tk.Button(bar, text="📋 직업판", command=self.open_board, bg=BG, fg=SUB, relief="flat", bd=0,
+                  font=self.f(9), cursor="hand2", activebackground=BG).pack(side="right", padx=self.px(4))
         self.bar = bar
         self.toggle_pin(False)
         self.cycle_alpha(False)
@@ -721,6 +729,8 @@ class App:
             return True, "💬 전체 채팅"
         if not me["alive"]:
             return True, "👻 유령 채팅 — 죽은 사람끼리만 보여요"
+        if v["phase"] == "night" and me.get("medium"):
+            return True, "🔮 영매: 밤엔 유령들과 대화할 수 있어요 (유령 채팅)"
         if v["phase"] == "night":
             if me.get("mchat"):
                 return True, "🔪 마피아 채팅 — 마피아 팀만 보여요"
@@ -1173,7 +1183,11 @@ class App:
         me = (v or {}).get("me")
         if not me or pid not in (me.get("targets") or []):
             return
-        if v["phase"] == "night":
+        if v["phase"] == "night" and me.get("medium"):
+            return True, "🔮 영매: 밤엔 유령들과 대화할 수 있어요 (유령 채팅)"
+        if v["phase"] == "day":
+            self.do_act("seduce", pid)
+        elif v["phase"] == "night":
             self.do_act("night", pid)
         elif v["phase"] == "vote":
             self.do_act("vote", pid)
@@ -1213,11 +1227,11 @@ class App:
             if self.host:
                 total = self.host.total
                 hs = len(self.host.humans())
-                hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원을 정하세요"
+                hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원과 직업(📋 직업판)을 정하세요"
                 btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
                         ("+", lambda: self.set_total(1), SOFT), ("게임 시작 ▶", self.host_start, ACCENT)]
             else:
-                hint = "채팅으로 인사하며 기다려요 👋"
+                hint = "채팅으로 인사하며 기다려요 👋  ·  📋 직업판에서 이번 판 직업을 볼 수 있어요"
         elif ph == "night":
             if me.get("act"):
                 if me.get("picked") and not (me["role"] in ("마피아", "의사")):
@@ -1229,6 +1243,10 @@ class App:
                 hint = "🔪 마피아끼리 몰래 대화할 수 있어요."
             elif me:
                 hint = "😴 밤입니다. 아침을 기다리세요." if me.get("alive") else "👻 유령끼리만 대화할 수 있어요."
+        elif ph == "day" and me.get("act"):
+            hint = me["act"] + ("  (바탕화면 캐릭터 클릭)" if getattr(self, "size_mode", "big") in ("nolist", "chat")
+                                else "  (아바타 클릭)")
+            btns = [("토론 끝", lambda: self.do_act("ready"), SOFT)] if not me.get("ready") else []
         elif ph == "day":
             if me.get("alive"):
                 if me.get("ready"):
@@ -1279,6 +1297,109 @@ class App:
             else:
                 side = "right" if "시작" in text else "left"
                 self.btn(self.act_fr, text, cmd, col, small=True).pack(side=side, padx=self.px(3))
+
+    # ------------------------------------------------ 직업판
+    def board_state(self):
+        """→ (총 인원, 끈 직업, 방장이 바꿀 수 있나, 진행 중인가)"""
+        v, lb = self.view, self.lobby or {}
+        if v:
+            return len(v["players"]), set(lb.get("off", [])), False, True
+        if self.host:
+            return max(self.host.total, len(self.host.humans()), core.MIN_PLAYERS), set(self.host.off), True, False
+        total = max(lb.get("total", 6), len(lb.get("members", [])), core.MIN_PLAYERS)
+        return total, set(lb.get("off", [])), False, False
+
+    def open_board(self):
+        tk = self.tk
+        if getattr(self, "board", None) and self.board.winfo_exists():
+            self.board.lift()
+            return
+        b = self.board = tk.Toplevel(self.root)
+        b.title("📋 직업판")
+        b.configure(bg=BG)
+        b.attributes("-topmost", True)
+        x, y = self.root.winfo_rootx(), self.root.winfo_rooty()
+        bw = self.px(520)
+        bh = min(self.px(720), self.root.winfo_screenheight() - self.px(80))
+        b.geometry(f"{bw}x{bh}+{max(0, x - bw - self.px(10))}+{max(0, y)}")
+        self._board_key = None
+        cv = tk.Canvas(b, bg=BG, highlightthickness=0)
+        sb = tk.Scrollbar(b, command=cv.yview)
+        cv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
+        self.board_body = tk.Frame(cv, bg=BG)
+        win = cv.create_window((self.px(14), self.px(12)), window=self.board_body, anchor="nw")
+        self.board_body.bind("<Configure>", lambda e: cv.configure(scrollregion=(0, 0, e.width, e.height + self.px(24))))
+        cv.bind("<Configure>", lambda e: cv.itemconfigure(win, width=e.width - self.px(28)))
+        b.bind("<MouseWheel>", lambda e: cv.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        b.bind("<Button-4>", lambda e: cv.yview_scroll(-1, "units"))
+        b.bind("<Button-5>", lambda e: cv.yview_scroll(1, "units"))
+        self.refresh_board()
+
+    def refresh_board(self):
+        b = getattr(self, "board", None)
+        if not b or not b.winfo_exists():
+            return
+        total, off, editable, started = self.board_state()
+        key = (total, tuple(sorted(off)), editable, started)
+        if key != self._board_key:
+            self._board_key = key
+            self.draw_board(total, off, editable, started)
+        self.root.after(800, self.refresh_board)
+
+    def draw_board(self, total, off, editable, started):
+        tk = self.tk
+        fr = self.board_body
+        for w in fr.winfo_children():
+            w.destroy()
+        roles = core.role_plan(total, off)
+        team = sum(r in core.MAFIA_TEAM for r in roles)
+        tk.Label(fr, text=f"📋 직업판  ·  총 {total}명", bg=BG, fg=TXT, font=self.f(14, True), anchor="w").pack(fill="x")
+        sub = ("이번 판 직업이에요." if started else
+               "방장이 추가 직업을 켜고 끌 수 있어요. 꺼진 자리는 시민(마피아 팀은 마피아)으로 채워져요." if editable
+               else "방장이 정한 이번 판 직업이에요.")
+        tk.Label(fr, text=f"마피아 팀 {team}명 · 시민 팀 {total - team}명   {sub}", bg=BG, fg=SUB, font=self.f(9),
+                 anchor="w", justify="left", wraplength=self.px(480)).pack(fill="x", pady=(0, self.px(8)))
+        for role in core.BOARD_ORDER:
+            cnt = roles.count(role)
+            need = core.OPTIONAL.get(role)
+            is_mafia = core.ROLE_INFO[role][0] == "mafia"
+            row = tk.Frame(fr, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            row.pack(fill="x", pady=self.px(2))
+            dim = cnt == 0
+            head = tk.Frame(row, bg=PANEL)
+            head.pack(fill="x", padx=self.px(10), pady=(self.px(5), 0))
+            tk.Label(head, text=f"{core.ROLE_ICON.get(role, '')} {role}", bg=PANEL,
+                     fg=("#a0a6b4" if dim else (RED if is_mafia else TXT)), font=self.f(11, True)).pack(side="left")
+            tk.Label(head, text=" 마피아 팀 " if is_mafia else " 시민 팀 ", bg="#fde2e4" if is_mafia else "#e2ecfd",
+                     fg=RED if is_mafia else ACCENT, font=self.f(8, True)).pack(side="left", padx=self.px(6))
+            if cnt:
+                tk.Label(head, text=f"× {cnt}", bg=PANEL, fg=TXT, font=self.f(11, True)).pack(side="right")
+            elif need and role in off:
+                tk.Label(head, text="꺼짐", bg=PANEL, fg="#a0a6b4", font=self.f(9, True)).pack(side="right")
+            elif need:
+                tk.Label(head, text=f"{need}인부터", bg=PANEL, fg="#a0a6b4", font=self.f(9, True)).pack(side="right")
+            if editable and need:
+                var = tk.BooleanVar(value=role not in off)
+                tk.Checkbutton(head, text="사용", variable=var, bg=PANEL, fg=SUB, activebackground=PANEL,
+                               selectcolor=PANEL, font=self.f(9), cursor="hand2",
+                               command=lambda r_=role, v_=var: self.toggle_role(r_, v_.get())).pack(side="right",
+                                                                                                padx=self.px(8))
+            tk.Label(row, text=core.ROLE_INFO[role][1], bg=PANEL, fg="#a0a6b4" if dim else SUB, font=self.f(9),
+                     anchor="w", justify="left", wraplength=self.px(470)).pack(fill="x", padx=self.px(10),
+                                                                              pady=(0, self.px(6)))
+
+    def toggle_role(self, role, on):
+        h = self.host
+        if not h or h.game:
+            return
+        (h.off.discard if on else h.off.add)(role)
+        self.st["roles_off"] = sorted(h.off)
+        write_json(SETTINGS, self.st)
+        h.last_lobby = 0
+        self._board_key = None
+        self._act_key = None
 
     # ------------------------------------------------ 방장 조작
     def set_total(self, d):
