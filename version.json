@@ -1,9 +1,9 @@
 {
- "version": 16,
- "note": "한글 입력 끊김 수정 (조합 중 포커스·스페이스·엔터)",
+ "version": 17,
+ "note": "AI 대화 방식: 캐릭터별 꼬리 물기·답하는 법·추리 수준",
  "files": {
-  "mafia.py": "1ad7618e3f4749cd3c0f110e1076f8b4e98cc34f398983dbd02768d78b0bbd1c",
-  "mafia_core.py": "c76088a08713ffb40c9bf70dc544b3b84a5c2f3dd22c3d1ee9190faa8fbbc9bf",
+  "mafia.py": "9f0ebbbb54f94e1f1b03fbb3d8388a7b8fe17eefc8eb0d3f48865befb68cdd1e",
+  "mafia_core.py": "59d1719ac9dceee2ba3bd3c4487c5c335a398c83dce8be1d28c478bc5d62ded5",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
   "안내.txt": "e7176cd592311681406df92cd9c14bff6d2a2d3c54488bbed8b19fa2b7515583"
