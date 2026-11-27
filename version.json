@@ -1,11 +1,11 @@
 {
- "version": 7,
- "note": "AI 대화 현실감 개선, 투표 기록 공개",
+ "version": 8,
+ "note": "화이트 테마·반응형 채팅창·투명도, 바탕화면 무대·대형·묘지",
  "files": {
-  "mafia.py": "2d79b787cf0d41890836bd3fddd4ee2f7f2a81b3fec0f505c15358bf0ba9db58",
+  "mafia.py": "7791855de94f4db21063157c3705d8d5b844d22f639f03a960a9a32cdb974cf4",
   "mafia_core.py": "63ae298eb8c0755fe3978ab7d95ee9c397246bc43cc3ad1935404360e912f744",
-  "desk.py": "6a54610e3e7677c8156756a05346711dcc3382ed7a5aba16fcb8090fd2a7444b",
+  "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "dce17cd4b86d6aade54e7428d20f4d88b9a193a4364d2dcc03675b217b167432"
+  "안내.txt": "a4a9c0c4437fc88b78692ead7e77b1bb5d6457518395d48d8826858ddd72ecad"
  }
 }

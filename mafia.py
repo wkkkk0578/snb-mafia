@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "0.9"
+VERSION = "1.0"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -270,13 +270,14 @@ class Host:
 
 # ---------------------------------------------------------------- 화면
 
-BG, PANEL, LINE, TXT, SUB = "#16181f", "#20232d", "#2c3040", "#eef0f6", "#9097a8"
-ACCENT, RED, GOLD, NIGHT = "#7aa2ff", "#ff5d6c", "#ffd166", "#24264a"
+BG, PANEL, LINE, TXT, SUB = "#f4f5f9", "#ffffff", "#dde0e8", "#1f2330", "#6b7280"
+ACCENT, RED, GOLD, NIGHT = "#3d7bfd", "#e5484d", "#b7791f", "#e3e6fb"
+SOFT = "#e8ebf2"           # 보조 버튼 (밝은 회색, 글자는 진하게)
 PHASE_TXT = {"intro": "🎲 직업 확인", "selfintro": "🙋 자기소개", "night": "🌙 밤", "morning": "🌅 아침", "day": "☀ 낮 토론",
              "vote": "🗳 투표", "defense": "🎤 최후 변론", "judge": "👍👎 찬반 투표", "verdict": "⚖ 결과",
              "end": "🏁 게임 끝"}
-PHASE_BG = {"night": NIGHT, "intro": "#2b2340", "selfintro": "#2b3a2f", "morning": "#3a2f25", "day": "#24303f",
-            "vote": "#3a2430", "defense": "#45311f", "judge": "#3a2430", "verdict": "#3a2430", "end": "#23352b"}
+PHASE_BG = {"night": NIGHT, "intro": "#ece6fb", "selfintro": "#e2f4e6", "morning": "#fdf0dc", "day": "#e2eefc",
+            "vote": "#fce4e7", "defense": "#fde9d4", "judge": "#fce4e7", "verdict": "#fce4e7", "end": "#e1f5e7"}
 
 
 class App:
@@ -303,7 +304,7 @@ class App:
         x, y = self.st.get("x", sw - w - self.px(24)), self.st.get("y", max(0, sh - h - self.px(70)))
         x, y = min(max(0, x), sw - 100), min(max(0, y), sh - 100)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
-        self.root.minsize(self.px(400), self.px(560))
+        self.root.minsize(self.px(260), self.px(190))
         self.pinned = self.st.get("pin", True)
         self.root.attributes("-topmost", self.pinned)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
@@ -318,6 +319,8 @@ class App:
         self.hover = None
         self._last_draw = None
         self.desk = deskmod.Desk(self.root, on_click=self.desk_click)
+        self.desk.anchor = self.desk_anchor
+        self.root.bind("<Configure>", self.on_resize, add="+")
         self._desk_key = None
         self.prev_phase, self.prev_alive = None, {}
         self._stop_job = None
@@ -361,6 +364,7 @@ class App:
     def build_start(self):
         tk = self.tk
         self.clear()
+        self.chat_fr = None
         fr = tk.Frame(self.root, bg=BG)
         fr.pack(fill="both", expand=True, padx=self.px(28), pady=self.px(26))
         tk.Label(fr, text="🔪", bg=BG, fg=TXT, font=(self.EF, 40)).pack(pady=(self.px(20), 0))
@@ -378,8 +382,8 @@ class App:
         self.e_room = field("방 코드 (참가할 때 입력 / 만들 때 비워두면 자동 생성)", self.st.get("room", ""))
         online = bool(self.cfg.get("url") and self.cfg.get("key"))
         self.btn(fr, "방 만들기 (내가 방장)", lambda: self.enter("host"), ACCENT, state=online).pack(fill="x", pady=self.px(3))
-        self.btn(fr, "참가하기", lambda: self.enter("join"), "#4a5170", state=online).pack(fill="x", pady=self.px(3))
-        self.btn(fr, "혼자 연습 (AI 들과만)", lambda: self.enter("solo"), "#3a3f52").pack(fill="x", pady=self.px(3))
+        self.btn(fr, "참가하기", lambda: self.enter("join"), SOFT, state=online).pack(fill="x", pady=self.px(3))
+        self.btn(fr, "혼자 연습 (AI 들과만)", lambda: self.enter("solo"), SOFT).pack(fill="x", pady=self.px(3))
         if not online:
             tk.Label(fr, text="config.json 에 서버 정보가 없어 온라인은 꺼져 있어요.", bg=BG, fg=RED,
                      font=self.f(9)).pack(pady=self.px(6))
@@ -441,8 +445,9 @@ class App:
 
     def btn(self, parent, text, cmd, color, state=True, small=False):
         tk = self.tk
-        b = tk.Button(parent, text=text, command=cmd, bg=color, fg="white", activebackground=color,
-                      activeforeground="white", relief="flat", bd=0, cursor="hand2",
+        fg = TXT if color in (SOFT, PANEL, BG) else "white"
+        b = tk.Button(parent, text=text, command=cmd, bg=color, fg=fg, activebackground=color,
+                      activeforeground=fg, relief="flat", bd=0, cursor="hand2",
                       font=self.f(10 if small else 12, True), padx=self.px(10), pady=self.px(3 if small else 7),
                       state="normal" if state else "disabled", disabledforeground="#777")
         return b
@@ -499,10 +504,16 @@ class App:
         self.b_pin = tk.Button(bar, text="", command=self.toggle_pin, bg=BG, fg=SUB, relief="flat", bd=0,
                                font=self.f(9), cursor="hand2", activebackground=BG)
         self.b_pin.pack(side="right", padx=self.px(6))
-        self.b_size = tk.Button(bar, text="", command=self.cycle_size, bg=BG, fg=SUB, relief="flat", bd=0,
-                                font=self.f(9), cursor="hand2", activebackground=BG)
-        self.b_size.pack(side="right", padx=self.px(6))
+        self.b_alpha = tk.Button(bar, text="", command=self.cycle_alpha, bg=BG, fg=SUB, relief="flat", bd=0,
+                                 font=self.f(9), cursor="hand2", activebackground=BG)
+        self.b_alpha.pack(side="right", padx=self.px(4))
+        self.b_chars = tk.Button(bar, text="", command=self.cycle_chars, bg=BG, fg=SUB, relief="flat", bd=0,
+                                 font=self.f(9), cursor="hand2", activebackground=BG)
+        self.b_chars.pack(side="right", padx=self.px(4))
+        self.bar = bar
         self.toggle_pin(False)
+        self.cycle_alpha(False)
+        self.cycle_chars(False)
 
         self.role_fr = tk.Frame(self.root, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
         self.role_fr.pack(fill="x", padx=self.px(10), pady=self.px(6))
@@ -529,29 +540,31 @@ class App:
         self.l_chat.pack(side="bottom", fill="x", padx=self.px(12), pady=(0, self.px(6)))
         inp = tk.Frame(self.root, bg=BG)
         inp.pack(side="bottom", fill="x", padx=self.px(10), pady=(self.px(8), self.px(2)))
-        chat = tk.Frame(self.root, bg=PANEL)
+        chat = tk.Frame(self.root, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
         chat.pack(fill="both", expand=True, padx=self.px(10), pady=(self.px(2), 0))
+        self.chat_fr, self.top_fr = chat, top
         self.txt = tk.Text(chat, bg=PANEL, fg=TXT, font=self.f(10), relief="flat", wrap="char", height=4,
                            padx=self.px(8), pady=self.px(6), state="disabled", cursor="arrow", spacing1=self.px(2))
         sb = tk.Scrollbar(chat, command=self.txt.yview)
         self.txt.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.txt.pack(side="left", fill="both", expand=True)
-        self.txt.tag_configure("sys", foreground="#a9b8ff")
+        self.txt.tag_configure("sys", foreground="#4a5bd4")
         self.txt.tag_configure("priv", foreground=GOLD)
-        self.txt.tag_configure("mafia", foreground="#ff8a8a")
+        self.txt.tag_configure("mafia", foreground="#d33b45")
         self.txt.tag_configure("dead", foreground="#8a8f9c")
-        self.txt.tag_configure("me", foreground="#ffe9a8")
+        self.txt.tag_configure("me", foreground="#2457c5")
         self.txt.tag_configure("name", font=self.f(10, True))
         for txt, d in (("◀", -1), ("▶", 1)):
-            b = self.btn(inp, txt, None, "#3a3f52", small=True)
+            b = self.btn(inp, txt, None, SOFT, small=True)
             b.configure(command=lambda: None, padx=self.px(6))
             b.bind("<ButtonPress-1>", lambda e, d=d: self.desk.walk(d))
             b.bind("<ButtonRelease-1>", lambda e: self.desk.stop())
             b.pack(side="left", padx=(0, self.px(3)))
-        bj = self.btn(inp, "⤒", lambda: self.desk.jump(), "#3a3f52", small=True)
+        bj = self.btn(inp, "⤒", lambda: self.desk.jump(), SOFT, small=True)
         bj.configure(padx=self.px(6))
         bj.pack(side="left", padx=(0, self.px(6)))
+        self.inp_fr = inp
         self.e_chat = tk.Entry(inp, font=self.f(11), bg=PANEL, fg=TXT, insertbackground=TXT, relief="flat",
                                highlightthickness=1, highlightbackground=LINE, highlightcolor=ACCENT)
         self.e_chat.pack(side="left", fill="x", expand=True, ipady=self.px(5))
@@ -562,36 +575,98 @@ class App:
         self._chat_mode = None
         self.e_chat.focus_set()
         self.update_room_label()
-        self.apply_size()
+        self.size_mode = None
+        self.apply_size(self.size_for_height())
 
-    SIZES = ("big", "small", "hide")
-    SIZE_TXT = {"big": "▣ 목록 크게", "small": "▤ 목록 작게", "hide": "▢ 목록 숨김"}
+    # ------------------------------------------------ 반응형: 창 높이에 따라 자동으로 접힘
+    SIZE_STEPS = ((660, "big"), (500, "small"), (360, "nolist"), (0, "chat"))
 
-    def cycle_size(self):
-        cur = self.st.get("size", "big")
-        self.st["size"] = self.SIZES[(self.SIZES.index(cur) + 1) % 3] if cur in self.SIZES else "small"
-        write_json(SETTINGS, self.st)
-        self.apply_size()
+    def size_for_height(self):
+        h = (self.root.winfo_height() if self.root.winfo_ismapped() else self.px(760)) / self.S
+        return next(m for lim, m in self.SIZE_STEPS if h >= lim)
 
-    def apply_size(self):
-        """참가자 목록 크기: 크게(설명+큰 아바타) / 작게(한 줄 직업 + 작은 아바타) / 숨김(바탕화면 캐릭터로만)."""
-        size = self.st.get("size", "big")
-        self.b_size.configure(text=self.SIZE_TXT.get(size, self.SIZE_TXT["big"]))
-        if size == "big":
-            self.l_desc.pack(fill="x", padx=self.px(10), pady=(0, self.px(6)))
-            self.l_role.configure(font=self.f(12, True))
-        else:
-            self.l_desc.pack_forget()
-            self.l_role.configure(font=self.f(10, True))
-            self.l_role.pack_configure(pady=self.px(4))
-        if size == "big":
-            self.l_role.pack_configure(pady=(self.px(6), 0))
-        if size == "hide":
-            self.cv.pack_forget()
-        elif not self.cv.winfo_ismapped():
-            self.cv.pack(fill="x", padx=self.px(6), after=self.role_fr)
+    def on_resize(self, e=None):
+        if e is not None and e.widget is not self.root:
+            return
+        if getattr(self, "_rs_job", None):
+            self.root.after_cancel(self._rs_job)
+        self._rs_job = self.root.after(60, lambda: self.apply_size(self.size_for_height()))
+
+    def apply_size(self, mode):
+        """big: 설명+큰 목록 / small: 작은 목록 / nolist: 목록 숨김 / chat: 채팅만 (단계·시간 한 줄 + 채팅)."""
+        if not getattr(self, "chat_fr", None) or mode == self.size_mode:
+            return
+        self.size_mode = mode
+        for w in (self.bar, self.role_fr, self.cv, self.l_hint, self.act_fr):
+            w.pack_forget()
+        self.l_desc.pack_forget()
+        big = mode == "big"
+        self.l_phase.configure(font=self.f(15 if mode != "chat" else 11, True))
+        self.l_timer.configure(font=self.f(15 if mode != "chat" else 11, True))
+        self.l_phase.pack_configure(pady=self.px(8 if mode != "chat" else 3))
+        before = dict(before=self.chat_fr)
+        if mode != "chat":
+            self.bar.pack(fill="x", padx=self.px(10), pady=(self.px(6), 0), **before)
+            self.role_fr.pack(fill="x", padx=self.px(10), pady=self.px(6), **before)
+            self.l_role.configure(font=self.f(12 if big else 10, True))
+            self.l_role.pack_configure(pady=(self.px(6), 0) if big else self.px(4))
+            if big:
+                self.l_desc.pack(fill="x", padx=self.px(10), pady=(0, self.px(6)))
+        if mode in ("big", "small"):
+            self.cv.pack(fill="x", padx=self.px(6), **before)
+        if mode != "chat":
+            self.l_hint.pack(fill="x", padx=self.px(10), **before)
+        self.act_fr.pack(fill="x", padx=self.px(10), pady=self.px(4 if mode != "chat" else 1), **before)
+        if mode == "chat":
+            self.l_chat.pack_forget()
+        elif not self.l_chat.winfo_ismapped():
+            self.l_chat.pack(side="bottom", fill="x", padx=self.px(12), pady=(0, self.px(6)), before=self.inp_fr)
         self._last_draw = None
+        self._act_key = None
         self.redraw(force=True)
+
+    # ------------------------------------------------ 투명도: 마우스가 떠나면 흐려짐
+    ALPHAS = (1.0, 0.8, 0.5, 0.2)
+
+    def cycle_alpha(self, flip=True):
+        a = self.st.get("alpha", 1.0)
+        if flip:
+            i = min(range(len(self.ALPHAS)), key=lambda k: abs(self.ALPHAS[k] - a))
+            a = self.ALPHAS[(i + 1) % len(self.ALPHAS)]
+            self.st["alpha"] = a
+            write_json(SETTINGS, self.st)
+        self.b_alpha.configure(text=f"◐ {int(a * 100)}%")
+        self._alpha_now = None
+
+    def update_alpha(self, now):
+        """마우스가 창 위에 있거나 새 채팅이 오면 또렷하게, 아니면 설정한 투명도로."""
+        try:
+            px_, py_ = self.root.winfo_pointerxy()
+            x0, y0 = self.root.winfo_rootx(), self.root.winfo_rooty()
+            inside = x0 <= px_ < x0 + self.root.winfo_width() and y0 - 30 <= py_ < y0 + self.root.winfo_height()
+        except Exception:
+            inside = True
+        base = self.st.get("alpha", 1.0)
+        target = 1.0 if inside else (max(base, 0.92) if now < getattr(self, "flash_until", 0) else base)
+        if target != getattr(self, "_alpha_now", None):
+            self._alpha_now = target
+            try:
+                self.root.attributes("-alpha", target)
+            except Exception:
+                pass
+
+    # ------------------------------------------------ 바탕화면 캐릭터 표시: 모두 / 사람만 / 끄기
+    CHARS = ("all", "humans", "off")
+    CHARS_TXT = {"all": "👥 캐릭터 모두", "humans": "🙂 사람만", "off": "🚫 캐릭터 끔"}
+
+    def cycle_chars(self, flip=True):
+        c = self.st.get("chars", "all")
+        if flip:
+            c = self.CHARS[(self.CHARS.index(c) + 1) % 3] if c in self.CHARS else "all"
+            self.st["chars"] = c
+            write_json(SETTINGS, self.st)
+            self._desk_key = None
+        self.b_chars.configure(text=self.CHARS_TXT.get(c, self.CHARS_TXT["all"]))
 
     def toggle_pin(self, flip=True):
         if flip:
@@ -619,6 +694,8 @@ class App:
 
     # ------------------------------------------------ 채팅
     def add_line(self, kind, text, name="", mine=False):
+        if not mine:
+            self.flash_until = time.time() + 3.5
         t = self.txt
         t.configure(state="normal")
         tag = {"sys": "sys", "mafia": "mafia", "dead": "dead", "priv": "priv"}.get(kind)
@@ -734,6 +811,7 @@ class App:
                 self.status = ("이 방 코드에 방장이 없어요. 코드를 확인하세요.", RED)
         self.update_room_label()
         self.update_chat_box()
+        self.update_alpha(now)
         self.sync_desk()
         ps = self.desk.take_pos(now)
         if ps:
@@ -806,7 +884,7 @@ class App:
     # ------------------------------------------------ 그리기
     def layout(self, n):
         W = max(self.cv.winfo_width(), self.px(380))
-        if self.st.get("size") == "small":
+        if getattr(self, "size_mode", "big") == "small":
             cols = 6
             ch = self.px(50)
         else:
@@ -886,7 +964,7 @@ class App:
             total = max(lb.get("total", 0), len(mem), core.MIN_PLAYERS)
             rows = [dict(id=m["id"], n=m["nick"], ai=False, a=True, c=core.COLORS[i % 12], r=None, tag=None,
                          host=m["id"] == lb.get("host")) for i, m in enumerate(mem)]
-            rows += [dict(id=None, n="AI", ai=True, a=True, c="#3a3f52", r=None, tag=None, ghost=True)
+            rows += [dict(id=None, n="AI", ai=True, a=True, c=SOFT, r=None, tag=None, ghost=True)
                      for _ in range(total - len(mem))]
         n = len(rows)
         if not n:
@@ -897,7 +975,7 @@ class App:
         me = (v or {}).get("me") or {}
         targets = set(me.get("targets") or [])
         self.cells = []
-        small = self.st.get("size") == "small"
+        small = getattr(self, "size_mode", "big") == "small"
         R = self.px(13 if small else 25)
         for i, p in enumerate(rows):
             cx = (i % cols) * cw + cw / 2
@@ -905,23 +983,23 @@ class App:
             pid = p.get("id")
             is_t = pid in targets
             alive = p.get("a", True)
-            fill = p["c"] if alive else "#3b3e48"
+            fill = p["c"] if alive else "#d9dbe1"
             if p.get("ghost"):
-                cv.create_oval(cx - R, cy - R, cx + R, cy + R, outline="#4a4f63", dash=(3, 3), width=2)
+                cv.create_oval(cx - R, cy - R, cx + R, cy + R, outline="#c3c7d1", dash=(3, 3), width=2)
                 cv.create_text(cx, cy, text="🤖", font=(self.EF, 9 if small else 15), fill=SUB)
                 cv.create_text(cx, cy + R + self.px(9 if small else 13), text="AI 자리", font=self.f(8 if small else 9), fill=SUB)
                 continue
             if is_t and self.hover == pid:
-                cv.create_oval(cx - R - 6, cy - R - 6, cx + R + 6, cy + R + 6, outline=GOLD, width=2)
+                cv.create_oval(cx - R - 6, cy - R - 6, cx + R + 6, cy + R + 6, outline="#f59f00", width=2)
             if me.get("pick") == pid:
-                cv.create_oval(cx - R - 5, cy - R - 5, cx + R + 5, cy + R + 5, outline=GOLD, width=3)
+                cv.create_oval(cx - R - 5, cy - R - 5, cx + R + 5, cy + R + 5, outline="#f59f00", width=3)
             if p.get("mp"):
                 cv.create_oval(cx - R - 9, cy - R - 9, cx + R + 9, cy + R + 9, outline=RED, width=2, dash=(4, 2))
             if p.get("turn"):
-                cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#7be08b", width=3)
+                cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#2f9e44", width=3)
             if p.get("acc") and v and v["phase"] in ("defense", "judge"):
                 cv.create_oval(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7, outline="#ff9b3d", width=3)
-            cv.create_oval(cx - R, cy - R, cx + R, cy + R, fill=fill, outline="#ffffff" if pid == self.me else "",
+            cv.create_oval(cx - R, cy - R, cx + R, cy + R, fill=fill, outline=TXT if pid == self.me else "",
                            width=2)
             cv.create_text(cx, cy, text=(p["n"][:1] or "?"), font=self.f(9 if small else 15, True),
                            fill="#1b1d24" if alive else "#777")
@@ -931,14 +1009,14 @@ class App:
             if small and p.get("ai"):
                 name += "·AI"
             cv.create_text(cx, cy + R + self.px(8 if small else 11), text=name[:9], font=self.f(8 if small else 9, True),
-                           fill=TXT if alive else "#707585")
+                           fill=TXT if alive else "#9aa0ac")
             if small:
                 if p.get("v"):
                     cv.create_oval(cx + R - self.px(4), cy - R - self.px(3), cx + R + self.px(10), cy - R + self.px(11),
                                    fill=RED, outline="")
                     cv.create_text(cx + R + self.px(3), cy - R + self.px(4), text=str(p["v"]), font=self.f(8, True), fill="white")
                 if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")):
-                    cv.create_text(cx - R - self.px(3), cy + R - self.px(3), text="✔", font=self.f(8, True), fill="#7be08b")
+                    cv.create_text(cx - R - self.px(3), cy + R - self.px(3), text="✔", font=self.f(8, True), fill="#2f9e44")
                 self.cells.append((pid, cx, cy, R + self.px(8)))
                 continue
             sub = []
@@ -954,14 +1032,14 @@ class App:
             if p.get("ai"):
                 bx, by = cx + R - self.px(4), cy - R + self.px(2)
                 cv.create_rectangle(bx - self.px(11), by - self.px(7), bx + self.px(11), by + self.px(7),
-                                    fill="#3d4466", outline="")
-                cv.create_text(bx, by, text="AI", font=self.f(7, True), fill="#cfd6ff")
+                                    fill="#dfe5ff", outline="")
+                cv.create_text(bx, by, text="AI", font=self.f(7, True), fill="#3b4a8a")
             if p.get("v"):
                 bx, by = cx - R + self.px(2), cy - R + self.px(2)
                 cv.create_oval(bx - self.px(10), by - self.px(10), bx + self.px(10), by + self.px(10), fill=RED, outline="")
                 cv.create_text(bx, by, text=str(p["v"]), font=self.f(9, True), fill="white")
             if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")):
-                cv.create_text(cx + R + self.px(2), cy + R - self.px(4), text="✔", font=self.f(10, True), fill="#7be08b")
+                cv.create_text(cx + R + self.px(2), cy + R - self.px(4), text="✔", font=self.f(10, True), fill="#2f9e44")
             self.cells.append((pid, cx, cy, R + self.px(10)))
 
     # ------------------------------------------------ 바탕화면 캐릭터
@@ -988,10 +1066,34 @@ class App:
         elif self.mode == "solo" or self.host:
             rows = [dict(id=self.me, n=self.nick, ch=self.host.members[self.me].get("ch") if self.host else None,
                          ai=False, alive=True)]
+        show = self.st.get("chars", "all")
+        if show == "off":
+            rows = []
+        elif show == "humans":
+            rows = [r_ for r_ in rows if not r_.get("ai")]
+        mode, focus = "free", None
+        if v:
+            ph = v["phase"]
+            if ph in ("vote", "judge", "verdict", "intro"):
+                mode = "line"
+            elif ph == "defense":
+                mode, focus = "stage", next((p["id"] for p in v["players"] if p.get("acc")), None)
+            elif ph == "selfintro":
+                mode, focus = "stage", next((p["id"] for p in v["players"] if p.get("turn")), None)
+            elif ph == "night":
+                mode = "night"
+        self.desk.set_mode(mode, focus, [p["id"] for p in v["players"]] if v else [r_["id"] for r_ in rows])
         key = json.dumps([rows, sorted(sims)], sort_keys=True)
         if key != self._desk_key:
             self._desk_key = key
             self.desk.sync(rows, self.me, sims)
+
+    def desk_anchor(self):
+        """무대 중심 = 채팅창 가로 가운데 (논리 px)."""
+        try:
+            return (self.root.winfo_rootx() + self.root.winfo_width() / 2) / deskmod.SC["v"]
+        except Exception:
+            return self.desk.W / 2
 
     def phase_effects(self, v):
         ph = v.get("phase")
@@ -1112,8 +1214,8 @@ class App:
                 total = self.host.total
                 hs = len(self.host.humans())
                 hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원을 정하세요"
-                btns = [("−", lambda: self.set_total(-1), "#3a3f52"), (f"총 {max(total, hs)}명", None, None),
-                        ("+", lambda: self.set_total(1), "#3a3f52"), ("게임 시작 ▶", self.host_start, ACCENT)]
+                btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
+                        ("+", lambda: self.set_total(1), SOFT), ("게임 시작 ▶", self.host_start, ACCENT)]
             else:
                 hint = "채팅으로 인사하며 기다려요 👋"
         elif ph == "night":
@@ -1121,8 +1223,8 @@ class App:
                 if me.get("picked") and not (me["role"] in ("마피아", "의사")):
                     hint = "선택 완료. 아침을 기다리세요."
                 else:
-                    hint = "🌙 " + me["act"] + ("  (바탕화면 캐릭터 클릭)" if self.st.get("size") == "hide" else "  (아바타 클릭)")
-                    btns = [("이번 밤은 안 씀", lambda: self.do_act("night", None), "#3a3f52")]
+                    hint = "🌙 " + me["act"] + ("  (바탕화면 캐릭터 클릭)" if getattr(self, "size_mode", "big") in ("nolist", "chat") else "  (아바타 클릭)")
+                    btns = [("이번 밤은 안 씀", lambda: self.do_act("night", None), SOFT)]
             elif me.get("mchat"):
                 hint = "🔪 마피아끼리 몰래 대화할 수 있어요."
             elif me:
@@ -1133,12 +1235,12 @@ class App:
                     hint = "✔ 토론 끝 표시함. 모두 누르면 바로 투표로 넘어가요."
                 else:
                     hint = "💬 토론하세요. 이름을 넣어 말하면 AI 들도 반응해요."
-                    btns = [("토론 끝", lambda: self.do_act("ready"), "#4a5170")]
+                    btns = [("토론 끝", lambda: self.do_act("ready"), SOFT)]
         elif ph == "vote":
             if me.get("alive"):
-                hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if self.st.get("size") == "hide" else "🗳 처형할 사람을 클릭하세요") \
+                hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if getattr(self, "size_mode", "big") in ("nolist", "chat") else "🗳 처형할 사람을 클릭하세요") \
                     + ("  (다시 클릭하면 변경)" if me.get("picked") else "")
-                btns = [("기권", lambda: self.do_act("vote", None), "#3a3f52")]
+                btns = [("기권", lambda: self.do_act("vote", None), SOFT)]
         elif ph == "selfintro":
             if me.get("myturn"):
                 hint = "🙋 내 차례! 채팅으로 한 줄 자기소개 해 주세요"
@@ -1162,6 +1264,8 @@ class App:
             hint = "수고하셨어요! 모든 직업이 공개됐어요."
             if self.host:
                 btns = [("대기실로 (다시 하기)", self.host_lobby, ACCENT)]
+        if getattr(self, "size_mode", "big") == "chat":
+            btns = [b for b in btns if b[1] is not None]
         key = (hint, tuple(b[0] for b in btns))
         self.l_hint.configure(text=hint)
         if key == self._act_key:

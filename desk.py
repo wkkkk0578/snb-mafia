@@ -537,6 +537,9 @@ class Avatar:
         self.die_t = None                        # 죽은 뒤 지난 프레임 (None = 살아있음)
         self.bubble, self.bubble_kind, self.bubble_until = "", "say", 0.0
         self.sub, self.ai, self.mafia = "", False, False
+        self.hop_t = -99                         # 말할 때 톡 튀는 시작 tick
+        self.rfx = None                          # 남의 캐릭터: 받은 위치 (무대 안 비율 0~1)
+        self.grave_x = None
 
     @property
     def alive(self):
@@ -548,6 +551,8 @@ class Avatar:
 
     def say(self, text, kind="say", sec=6.0):
         self.bubble, self.bubble_kind = text[:80], kind
+        if self.alive:
+            self.hop_t = self.tick
         self.bubble_until = time.time() + min(9.0, sec + len(text) * 0.05)
 
     def jump(self):
@@ -555,15 +560,25 @@ class Avatar:
             self.vy, self.vx = 15, self.face * 2.5 if self.manual == 0 else self.manual * WALK_FAST
             self.state = "jump"
 
-    def update(self, width, others):
+    def update(self, lo, hi, others, target=None, freeze=False, center=None):
+        """lo~hi: 무대 안 움직일 수 있는 범위. target: 대형 자리(있으면 그리로). freeze: 밤(제자리)."""
         self.tick += 1
         if self.die_t is not None:
             self.die_t += 1
             if self.y > 0:
                 self.y = max(0.0, self.y - 4)
+            if self.grave_x is not None and self.die_t >= Desk.TOMB_START:
+                self.x = self.grave_x                # 꺼진 뒤 무덤은 묘지로
             return
+        if target is not None and not self.manual and self.state != "jump":
+            return self.go_to(target, center)
         if not self.sim:
+            if self.rfx is not None:
+                self.rx = lo + self.rfx * (hi - lo)
             return self.follow()
+        if freeze and not self.manual and self.state != "jump":
+            self.state = "idle"
+            return
         s = self.state
         if s == "jump":
             self.x += self.vx
@@ -601,7 +616,6 @@ class Avatar:
                     self.x += side * min(3.0, (GAP - abs(d)) * 0.25)
                     if self.state == "walk" and not self.manual and self.face != side:
                         self.face = side
-        lo, hi = SIZE / 2, width - SIZE / 2
         if self.x < lo:
             self.x, self.face = lo, 1
             if self.manual:
@@ -610,6 +624,19 @@ class Avatar:
             self.x, self.face = hi, -1
             if self.manual:
                 self.face = self.manual
+
+    def go_to(self, tx, center=None):
+        """대형 자리로 걸어가서 멈추고, 무대 가운데를 바라봄."""
+        d = tx - self.x
+        if abs(d) > 1.2:
+            step = min(abs(d), WALK_FAST * 0.8)
+            self.x += step if d > 0 else -step
+            self.face = 1 if d > 0 else -1
+            self.state, self.moving = "walk", True
+        else:
+            self.x, self.state, self.moving = tx, "idle", False
+            if center is not None and abs(center - self.x) > 4:
+                self.face = 1 if center > self.x else -1
 
     def follow(self):
         if self.rx is None:
@@ -640,17 +667,21 @@ class Avatar:
                 return f[k // 3 % len(f)], flip, 1, 1, -9 * self.face, abs(math.sin(k / 1.8)) * 6
             fast = self.manual != 0 or not self.sim
             return f[k // (4 if fast else 6) % len(f)], flip, 1, 1, 0, abs(math.sin(k / (2.5 if fast else 3.5))) * 3
+        hop = self.tick - self.hop_t
+        if 0 <= hop < 12:                         # 말할 때 톡
+            return "점프" if "점프" in self.imgs else "서있기", flip, 1, 1, 0, math.sin(hop / 12 * math.pi) * 14
         return "서있기", flip, 1, round(1 + 0.02 * math.sin(k / 12), 2), 0, 0
 
-    def state_msg(self, W):
-        return [self.id, round(self.x / W, 4), self.face, 1 if (self.state == "walk" and self.y == 0) else 0,
-                round(self.y, 1)]
+    def state_msg(self, lo, hi):
+        """무대 안 비율로 보냄 (PC마다 무대 위치·폭이 달라도 같은 자리)."""
+        return [self.id, round((self.x - lo) / max(1, hi - lo), 4), self.face,
+                1 if (self.state == "walk" and self.y == 0) else 0, round(self.y, 1)]
 
 
 # ---------------------------------------------------------------- 바탕화면 전체
 
 class Desk:
-    DIE_JUMP, DIE_SINK, TOMB_START, TOMB_RISE = 10, 32, 24, 14
+    DIE_JUMP, DIE_SINK, TOMB_START, TOMB_RISE = 10, 32, 33, 14
 
     def __init__(self, root, on_click=None):
         self.root, self.on_click = root, on_click
@@ -669,6 +700,11 @@ class Desk:
         self.last_top = 0.0
         self.alive_flag = True
         self.refocus = None                      # 새 창이 포커스를 가져가면 돌려받을 함수
+        self.anchor = None                       # 무대 중심 x (논리 px) 를 돌려주는 함수 — 보통 채팅창 가운데
+        self.mode, self.focus, self.order = "free", None, []
+        self.zc = None                           # 무대 중심 (부드럽게 따라감)
+        self.zone = (0.0, self.W, 0.0, self.W)   # (무대 왼쪽, 오른쪽, 생존자 구역 왼쪽, 오른쪽)
+        self.dead_order = []
         self._shadow = None
         self.root.after(1000 // FPS, self.loop)
 
@@ -699,7 +735,60 @@ class Desk:
 
     def spawn_x(self, pid):
         h = int(hashlib.md5(str(pid).encode()).hexdigest()[:8], 16)
-        return SIZE + (h % 10000) / 10000 * (self.W - 2 * SIZE)
+        _, _, lo, hi = self.zone
+        return lo + SIZE / 2 + (h % 10000) / 10000 * max(1, hi - lo - SIZE)
+
+    def set_mode(self, mode, focus=None, order=None):
+        """free(자유) · line(한 줄 정렬) · stage(focus 가 가운데) · night(제자리)."""
+        self.mode, self.focus = mode, focus
+        if order is not None:
+            self.order = list(order)
+
+    def compute_zone(self):
+        """무대: 채팅창 근처, 인원에 맞는 폭. 왼쪽 끝은 묘지."""
+        avs = list(self.avs.values())
+        n_alive = sum(a.alive for a in avs)
+        self.dead_order = [p for p in self.dead_order if p in self.avs and not self.avs[p].alive]
+        for a in avs:
+            if not a.alive and a.id not in self.dead_order:
+                self.dead_order.append(a.id)
+        grave_w = len(self.dead_order) * SIZE * 0.95 + (SIZE * 0.4 if self.dead_order else 0)
+        live_w = max(SIZE * 3, n_alive * GAP * 1.1 + SIZE)
+        zw = min(self.W, grave_w + live_w)
+        want = self.anchor() if self.anchor else self.W / 2
+        self.zc = want if self.zc is None else self.zc + (want - self.zc) * 0.08
+        x0 = min(max(0.0, self.zc - zw / 2), self.W - zw)
+        self.zone = (x0, x0 + zw, x0 + grave_w, x0 + zw)
+        for i, pid in enumerate(self.dead_order):
+            self.avs[pid].grave_x = x0 + SIZE * 0.5 + i * SIZE * 0.95
+
+    def targets(self):
+        """대형 모드일 때 생존자별 자리."""
+        if self.mode not in ("line", "stage"):
+            return {}
+        _, _, lo, hi = self.zone
+        ids = [p for p in self.order if p in self.avs and self.avs[p].alive]
+        ids += [p for p in self.avs if p not in ids and self.avs[p].alive]
+        if not ids:
+            return {}
+        lo, hi = lo + SIZE * 0.6, hi - SIZE * 0.6
+        if self.mode == "stage" and self.focus in ids:
+            rest = [p for p in ids if p != self.focus]
+            mid = (lo + hi) / 2
+            out = {self.focus: mid}
+            left, right = rest[:len(rest) // 2], rest[len(rest) // 2:]
+            gap_c = GAP * 1.4                      # 가운데 사람 둘레는 넓게
+            for side, grp in ((-1, left), (1, right)):
+                span = (mid - lo - gap_c) if side < 0 else (hi - mid - gap_c)
+                for i, p in enumerate(reversed(grp) if side < 0 else grp):
+                    step = min(GAP * 1.05, span / max(1, len(grp)))
+                    out[p] = mid + side * (gap_c + i * step)
+            return out
+        n = len(ids)
+        if n == 1:
+            return {ids[0]: (lo + hi) / 2}
+        step = (hi - lo) / (n - 1)
+        return {p: lo + i * step for i, p in enumerate(ids)}
 
     def remove(self, pid):
         self.avs.pop(pid, None)
@@ -716,7 +805,7 @@ class Desk:
                 continue
             a = self.avs.get(pid)
             if a and pid not in self.sims:
-                a.rx, a.ry = float(xn) * self.W, float(y)
+                a.rfx, a.ry = min(1.0, max(0.0, float(xn))), float(y)
                 if not walk:
                     a.face = 1 if face > 0 else -1
 
@@ -754,7 +843,8 @@ class Desk:
         mine = [self.avs[i] for i in self.sims if i in self.avs and self.avs[i].alive]
         if not mine:
             return None
-        msgs = [a.state_msg(self.W) for a in mine]
+        _, _, lo, hi = self.zone
+        msgs = [a.state_msg(lo + SIZE / 2, hi - SIZE / 2) for a in mine]
         changed = any(self.sent.get(m[0]) != tuple(m[1:]) for m in msgs)
         moving = any(m[3] or m[4] for m in msgs)
         gap = 0.25 if moving else 2.0
@@ -786,8 +876,13 @@ class Desk:
     def frame(self, now=None):
         now = now or time.time()
         avs = list(self.avs.values())
+        self.compute_zone()
+        _, _, lo, hi = self.zone
+        tg = self.targets()
+        center = (lo + hi) / 2
         for a in avs:
-            a.update(self.W, avs)
+            a.update(lo + SIZE / 2, hi - SIZE / 2, avs, target=tg.get(a.id), freeze=self.mode == "night",
+                     center=center)
         for a in avs:
             self.draw(a, now)
         self.step_banner(now)
@@ -830,6 +925,8 @@ class Desk:
             rise_s = rise * 1.12 if rise < .8 else 1.12 - (rise - .8) / .2 * .12   # 살짝 튀어 오름
         else:
             rise_s = 1.0
+        if t >= self.TOMB_START:
+            sink = 1.0
         key = ("dead", a.ch, a.face > 0, round(sink, 2), round(rise_s, 2))
 
         def make():
