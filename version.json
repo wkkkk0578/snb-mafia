@@ -1,9 +1,9 @@
 {
- "version": 13,
- "note": "대기실 준비 버튼: 모두 준비해야 방장이 시작",
+ "version": 14,
+ "note": "AI 지시문 누출 차단 · 토론 시간 +20초/−20초 (하루 한 번)",
  "files": {
-  "mafia.py": "efecab9e36f990cd37113ba73a2ab6e877dd74e5fee1c8d729584fc5ada66a34",
-  "mafia_core.py": "b81742cb1981e9e36d8074b7ba3f96e2fe654cf8e5767d0c0c6575c39b169826",
+  "mafia.py": "c556c0579ccbbbe5c8d7219fecd2c8dd8ab9f2062048f348e84c356e09c094a9",
+  "mafia_core.py": "376b3b790549e531e7eeca1c5c97f4d5e5bb566cefabb115857164ff83959413",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
   "안내.txt": "65a4e2b0abab9e3298f0b306c8273f7a5c60790417723bc4fca9e3bf8a0e0385"

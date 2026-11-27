@@ -218,6 +218,23 @@ PHASE_KO = {"intro": "직업 확인", "selfintro": "자기소개", "night": "밤
             "defense": "최후 변론", "judge": "찬반 투표", "verdict": "결과 발표", "end": "게임 끝"}
 
 
+LEAK_PAT = re.compile(r"역할로|역할\s*:|에\s*(짧게\s*)?(반응|대답|답변)\s*[.:]|반응\.|\d+\s*[~∼-]\s*\d*\s*자|글자|출력|대사\s*:|"
+                      r"의도\s*:|지시|프롬프트|PASS|\bAI\b|[→\[\]]|^\(|\)$|인 척|캐릭터")
+
+
+def leaked(line, name=""):
+    """Claude 가 대사 대신 지시문·메모를 내보냈는지 (예: '현우 역할로, ○○의 "…"에 짧게 반응. 15~')."""
+    if not line:
+        return False
+    if LEAK_PAT.search(line):
+        return True
+    if name and re.match(rf"^{re.escape(name)}\s*(역할|으로|로서|입장)", line):
+        return True
+    if re.search(r"[0-9]+\s*[~∼]\s*$", line):    # 끝이 '15~' 처럼 잘린 숫자
+        return True
+    return False
+
+
 def clean_line(line, name):
     """Claude 답에서 대사 한 줄만 깔끔하게. 'PASS'(할 말 없음)면 빈 문자열."""
     line = (line or "").strip().split("\n")[0].strip()
@@ -227,6 +244,8 @@ def clean_line(line, name):
         if line.startswith(pre):
             line = line[len(pre):].strip()
     line = line.strip('"').strip("“”").strip()
+    if leaked(line, name):                        # 지시문·메모가 그대로 나온 경우 → 기본 대사로
+        return ""
     if len(line) > MAX_LEN:                       # 길면 문장 끝(. ! ? ~ …)이나 띄어쓰기에서 자름
         cut = max((m.end() for m in re.finditer(r"[.!?~…ㅋㅠ]+", line[:MAX_LEN + 1])), default=0)
         if cut < 12:
@@ -270,6 +289,7 @@ class Game:
         self.chat, self.seq, self.version = [], 0, 0
         self.phase, self.day, self.start, self.deadline = "intro", 0, now, now
         self.night, self.mafia_pick, self.votes, self.ready = {}, None, {}, set()
+        self.ext_used = set()
         self.knowledge = {pid: {} for pid in self.order}   # 내가 아는 남의 정보 (pid → 표시 문자열)
         self.spy_contact, self.reporter_used, self.winner = False, False, None
         self.heat = {pid: 0.0 for pid in self.order}         # 공개적으로 받은 의심
@@ -775,6 +795,21 @@ class Game:
         self.version += 1
         return True
 
+    def extend(self, pid, sec):
+        """낮 토론 시간 늘리기(+) / 줄이기(-). 살아있는 사람 한 명당 하루 한 번."""
+        p = self.players.get(pid)
+        if self.phase != "day" or not p or not p.alive or p.ai or (pid, self.day) in self.ext_used:
+            return False
+        self.ext_used.add((pid, self.day))
+        if sec > 0:
+            self.deadline += sec
+            self.sys(f"⏱ {p.name}님이 토론 시간을 {sec}초 늘렸어요.")
+        else:
+            self.deadline = max(self.now + 10, self.deadline + sec)
+            self.sys(f"⏩ {p.name}님이 토론 시간을 {-sec}초 줄였어요.")
+        self.version += 1
+        return True
+
     def set_ready(self, pid):
         p = self.players.get(pid)
         if self.phase == "day" and p and p.alive:
@@ -993,7 +1028,7 @@ class Game:
                 vis.append(dict(s=m["s"], k=m["k"], n=m["n"], x=m["x"], w=m["w"], me=m["w"] == pid and pid is not None,
                                 p=sc.startswith("to:")))
         v = dict(phase=self.phase, day=self.day, remain=max(0, int(self.deadline - now + .99)),
-                 total=int(self._dur(self.phase)) if self.phase != "end" else 0,
+                 total=max(int(self._dur(self.phase)), int(self.deadline - self.start)) if self.phase != "end" else 0,
                  players=rows, chat=vis[-80:], winner=self.winner, plan=plan_text(len(self.order), self.off),
                  accused=self.name(self.accused) if self.accused else "",
                  turn=self.name(self.intro_cur) if self.phase == "selfintro" and self.intro_cur else "")
@@ -1014,7 +1049,8 @@ class Game:
                            pick=(self.night.get(pid) if self.phase == "night" else
                                  self.seduced if (self.phase == "day" and self.seduced_by == pid) else self.votes.get(pid)),
                            picked=(pid in self.night) if self.phase == "night" else (pid in self.votes),
-                           ready=pid in self.ready, mchat=pid in mafia_ids, judge=self.judge.get(pid),
+                           ready=pid in self.ready, mchat=pid in mafia_ids,
+                           ext=(self.phase == "day" and me.alive and not me.ai and (pid, self.day) not in self.ext_used), judge=self.judge.get(pid),
                            accused=pid == self.accused, myturn=(self.phase == "selfintro" and pid == self.intro_cur),
                            medium=me.role == "영매",
                            can_chat=(ended or not me.alive or ((self.phase != "night" or pid in mafia_ids or me.role == "영매")
@@ -1491,6 +1527,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
                   f"비밀 정보: 당신의 진짜 직업은 '{req['role']}'({team}). {strat}\n"
                   + (f"마피아 동료: {', '.join(req['mates'])}\n" if req["mates"] else "")
                   + RULES + "\n"
+                  "[출력] 채팅창에 그대로 올라갈 대사 한 줄만 출력. 상황 설명·메모·'○○ 역할로' 같은 지시문·글자 수 표기 절대 금지.\n"
                   "[말하는 법]\n"
                   "- 진짜 사람이 단톡에 치듯 아주 짧게: 15~25자, 길어도 30자. 한 문장. 이름표·따옴표·괄호 지문 금지.\n"
                   "- 최근 채팅 흐름을 읽고 방금 나온 말에 반응하기. 혼자 딴 얘기 금지. 앞에서 내가 한 말 반복 금지.\n"

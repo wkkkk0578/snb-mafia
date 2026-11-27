@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.5"
+VERSION = "1.6"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -228,6 +228,8 @@ class Host:
             g.vote(pid, target)
         elif kind == "ready":
             g.set_ready(pid)
+        elif kind == "extend":
+            g.extend(pid, 20 if target == "+" else -20)
         elif kind == "seduce":
             g.seduce(pid, target)
         elif kind == "judge":
@@ -1383,6 +1385,8 @@ class App:
             hint = me["act"] + ("  (바탕화면 캐릭터 클릭)" if getattr(self, "size_mode", "big") in ("nolist", "chat")
                                 else "  (아바타 클릭)")
             btns = [("토론 끝", lambda: self.do_act("ready"), SOFT)] if not me.get("ready") else []
+            if me.get("ext"):
+                btns += [("⏱ +20초", lambda: self.do_act("extend", "+"), SOFT)]
         elif ph == "day":
             if me.get("alive"):
                 if me.get("ready"):
@@ -1390,6 +1394,9 @@ class App:
                 else:
                     hint = "💬 토론하세요. 이름을 넣어 말하면 AI 들도 반응해요."
                     btns = [("토론 끝", lambda: self.do_act("ready"), SOFT)]
+                if me.get("ext"):                     # 하루 한 번: 시간 늘리기 / 줄이기
+                    btns += [("⏱ +20초", lambda: self.do_act("extend", "+"), SOFT),
+                             ("⏩ −20초", lambda: self.do_act("extend", "-"), SOFT)]
         elif ph == "vote":
             if me.get("alive"):
                 hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if getattr(self, "size_mode", "big") in ("nolist", "chat") else "🗳 처형할 사람을 클릭하세요") \
