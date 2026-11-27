@@ -1,9 +1,9 @@
 {
- "version": 18,
- "note": "AI 감정: 욕·비아냥·깐족에 성격별 반응, 쌓이면 흥분, 식으면 사과, 구경꾼 말림·편들기",
+ "version": 19,
+ "note": "개선 제안 v3 반영: 끼어들기·이름 인식·직업 설명·최후 변론, 말·투표 일치(속마음 기록), 밤 능력 판단, 감독, 닉네임, 가벼운 욕",
  "files": {
-  "mafia.py": "5ca4c9091f1dcf2bbcb66e8dda3d825b87cc39a85304e266e8f57408097d53af",
-  "mafia_core.py": "0ca6a5bf95de27ecee4774fe20175bf71c42a9439167b85611baf770fbebe121",
+  "mafia.py": "130388b7caf448e9d8c32ec09f62468a3fe5801c6dbe47ed0ab61fde72cafb58",
+  "mafia_core.py": "ce3398500c671569ccf2ca2e59ceac78f657e2a55bf102c4cff64130ca4ec6a1",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
   "안내.txt": "e7176cd592311681406df92cd9c14bff6d2a2d3c54488bbed8b19fa2b7515583"

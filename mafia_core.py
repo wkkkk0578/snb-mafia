@@ -5,6 +5,7 @@
 - Brain: AI 한 명의 머리. '무엇을 할지'는 규칙(휴리스틱)으로 정하고,
          '어떻게 말할지'는 페르소나 문장 틀 또는 (설정 시) Claude API 가 다듬는다.
 """
+import json
 import math
 import queue
 import time
@@ -98,7 +99,8 @@ GENERIC = {
     "intro_react": ["{x}님 반가워요 ㅎㅎ", "{x}님 기억해 둘게요"],
     "night_mafia": ["오늘은 {x} 어때요?", "{x} 가죠"],
     "spy_contact": ["저 스파이예요. 같이 가요"],
-    "last_defense": ["저 진짜 아니에요. 반대 눌러 주세요", "저 시민이에요. 저 죽으면 손해예요", "마피아는 따로 있어요. 믿어 주세요"],
+    "last_defense": ["저 진짜 아니에요. 어제 투표 보시면 알아요. 반대 눌러 주세요", "저 시민이에요. 저 죽으면 시민만 손해예요. 한 번만 믿어 주세요",
+                     "억울해요 진짜. 마피아는 따로 있어요. 저 살려 주시면 내일 꼭 찾을게요"],
     "judge_yes": ["찬성할게요", "아쉽지만 찬성"],
     "judge_no": ["저는 반대요", "아직 애매해서 반대"],
     "reply": ["음 아직 잘 모르겠어요", "글쎄요 좀 더 볼게요"],
@@ -131,7 +133,8 @@ GENERIC_B = {
     "intro_react": ["{x} 반가워 ㅎㅎ", "{x} 기억해 둘게"],
     "night_mafia": ["오늘 {x} 어때?", "{x} 가자"],
     "spy_contact": ["나 스파이야. 같이 가자"],
-    "last_defense": ["나 진짜 아니야. 반대 눌러줘", "나 시민이야. 나 죽으면 손해야", "마피아 따로 있어. 믿어줘"],
+    "last_defense": ["나 진짜 아니야. 어제 투표 보면 알아. 반대 눌러줘", "나 시민이야. 나 죽으면 시민만 손해야. 한 번만 믿어줘",
+                     "억울해 진짜. 마피아 따로 있어. 살려주면 내일 꼭 찾을게"],
     "judge_yes": ["찬성", "아쉽지만 찬성"],
     "judge_no": ["난 반대", "아직 애매해서 반대"],
     "reply": ["음 아직 잘 모르겠어", "글쎄 좀 더 볼게"],
@@ -417,7 +420,7 @@ def classify_answer(text, names_in, asker_name):
     if re.search(r"(그것보다|나보다|저보다|나 말고|저 말고|물어봐)", text):
         return "deflect"
     if not names_in and (re.search(r"(먼저 말해|너는|넌|님은요|는\?|은\?|님은\?)", text)
-                         or ("?" in text and asker_name and asker_name in text)):
+                         or ("?" in text and asker_name and name_re(asker_name).search(text))):
         return "askback"
     if names_in and re.search(r"(아닌 것|아닌 거|아니지 않|시민 같|괜찮아|믿어요|믿어$|믿을 만)", text):
         return "cleared"                                   # 누군가를 '아닌 것 같다'고 감싸는 답
@@ -441,7 +444,8 @@ def opinion_question(text):
 
 ACCUSE_W = ("마피아", "수상", "범인", "의심", "찍", "투표", "이상", "가짜", "거짓", "처형", "죽이")
 DEFEND_W = ("아니", "시민", "믿", "억울", "확실", "결백")
-CLAIM_RE = re.compile(r"(저|제가|나|내가|난|전)\s*(는|가|은)?\s*(진짜\s*)?경찰|경찰\s*(입니다|이에요|예요|임|이야|인데|이고)")
+CLAIM_RE = re.compile(r"(?:^|[\s.,!~ㅋ])(저|제가|나|내가|난|전)\s*(는|가|은)?\s*(진짜\s*|사실\s*)?경찰\s*(이|입|임|예|인데|이고|이거든)"
+                      r"|^\s*경찰\s*(입니다|이에요|예요|임|이야)")
 
 INTENT_DESC = {
     "open": "첫날 인사 겸 분위기 잡는 한마디",
@@ -475,6 +479,9 @@ INTENT_DESC = {
     "ans_vague": "{x}의 질문(\"{q}\")에 아직 잘 모르겠다고 솔직하게 답하기",
     "ans_askback": "{x}의 질문(\"{q}\")에 바로 답하지 않고 {x}는 어떻게 생각하는지 되묻기",
     "ans_deflect": "{x}의 질문(\"{q}\")을 슬쩍 피하고 {z} 쪽으로 화제를 돌리기",
+    "vote_decide": "투표 시간. 지금까지 대화와 내 속마음 기록을 보고 처형할 사람을 정하기 (후보: {q})",
+    "judge_decide": "{x}의 처형 찬반 투표. 지금까지 대화와 {x}의 최후 변론을 보고 찬성/반대 정하기",
+    "night_decide": "밤. 내 능력을 쓸 대상을 후보 중에서 고르기 (후보: {q})",
     "fu_dig_c": "{x}가 {y}은(는) 아닌 것 같다고 함(\"{q}\"). 왜 {y}을(를) 믿는지 묻기",
     "fu_counter_c": "{x}는 {y}을(를) 감쌌지만(\"{q}\") 나는 {y}이(가) 좀 걸린다고 말하기",
     "fu_agree_c": "{x}가 {y}은(는) 아닌 것 같다고 함(\"{q}\"). 나도 {y}은(는) 괜찮아 보인다고 맞장구",
@@ -525,6 +532,30 @@ TEMPER = {
 }
 DEFAULT_TEMPER = dict(sens=.5, low="calm", high="snap", cap=2, sorry=.3, sulk=False, side="none")
 
+SWEAR_LV = {"민재": 1, "하린": 1, "태호": 1, "지훈": 1}      # 가벼운 비속어를 가끔 쓰는 캐릭터
+STRONG_SWEAR_RE = re.compile(r"(시발|씨발|씨빨|ㅅㅂ|ㅆㅂ|ㅅ\s?ㅂ|병신|ㅂㅅ|븅신|좆|ㅈ같|존나|ㅈㄴ|개새|새끼|꺼져|닥쳐|닥치|"
+                             r"지랄|ㅈㄹ|등신|또라이|미친놈|미친년|ㄲㅈ|ㄷㅊ|엿 ?먹)")
+LIGHT_J = {
+    "react": ["아 씨..", "미쳤네요 ㅋㅋ", "헐 개웃겨"],
+    "accuse": ["{x}님 개수상한데요", "아 씨 {x}님 좀 이상해요"],
+    "defend": ["아 씨 저 아니라고요", "개억울하네요 진짜"],
+    "why": ["뭔 소리예요 ㅋㅋ", "아 씨 왜요?"],
+    "fu_challenge": ["그건 좀 개억지 아니에요?"],
+    "tp_snap2": ["아 씨 말 좀 가려서 하세요", "아 빡치네 진짜"],
+    "tp_snap3": ["아 진짜 빡치네요! 근거나 대세요", "아 씨 왜 자꾸 저만 갖고 그래요"],
+    "tp_counter2": ["개찔리나 보네요 ㅋㅋ"],
+}
+LIGHT_B = {
+    "react": ["아 씨 ㅋㅋ", "미쳤다 ㅋㅋ", "헐 개웃겨", "아 놔"],
+    "accuse": ["{x} 개수상한데", "아 씨 {x} 좀 이상해"],
+    "defend": ["아 씨 나 아니라고", "개억울하네 진짜"],
+    "why": ["뭔 소리야 ㅋㅋ", "아 씨 왜?"],
+    "fu_challenge": ["그건 좀 개억지 아님?"],
+    "tp_snap2": ["아 씨 말 좀 가려서 해", "아 빡치네 진짜"],
+    "tp_snap3": ["아 진짜 빡치네! 근거나 대", "젠장 왜 자꾸 나만 갖고 그래"],
+    "tp_counter2": ["개찔리나 보네 ㅋㅋ"],
+    "tp_laugh2": ["아 놔 ㅋㅋ 왜 그래"],
+}
 SWEAR_RE = re.compile(r"(시발|씨발|씨빨|ㅅㅂ|ㅆㅂ|ㅅ\s?ㅂ|병신|ㅂㅅ|븅신|좆|ㅈ같|존나|ㅈㄴ|개새|새끼|꺼져|닥쳐|닥치|미친|ㅁㅊ|"
                       r"또라이|지랄|ㅈㄹ|멍청|등신|ㄲㅈ|ㄷㅊ)")
 INSULT_RE = re.compile(r"(노답|한심|어이없|헛소리|개소리|입 ?다물|조용히 ?해|그만 ?좀|됐고|관심 ?없|짜증|답답|무식|바보)")
@@ -539,6 +570,8 @@ def provocation(text):
         return 1.1, "insult"
     if TEASE_RE.search(text):
         return .7, "tease"
+    if re.search(r"(아 씨|개수상|개억지|빡치|젠장)", text):
+        return .4, "light"
     return 0, None
 
 
@@ -632,7 +665,7 @@ LIMITS = dict(react=8, short_ask=12, why=8, nudge=16, quiet=16, agree=16, ask=18
               ans_plain=12, ans_reason=30, ans_vague=16, ans_askback=18, ans_deflect=22,
               fu_dig=16, fu_dig_v=16, fu_narrow=22, fu_challenge=20, fu_challenge_v=20, fu_press=14, fu_share=18,
               fu_dig_c=18, fu_counter_c=18, fu_agree_c=20, ans_clear=20, ans_hold=18, ans_concede=16, ans_stuck=18, ans_about_yes=20, ans_about_no=20, ans_vote=24, ans_claim_yes=16, ans_claim_no=16,
-              fu_bridge=20, fu_agree=18, fu_disagree=20, fu_ack=8, chime_q=16, claim_mafia=30, claim_clear=30, counter=30, defend=40, last_defense=50)
+              fu_bridge=20, fu_agree=18, fu_disagree=20, fu_ack=8, chime_q=16, claim_mafia=30, claim_clear=30, counter=30, defend=40, last_defense=96)
 for _k in TEMPER_INTENTS:
     LIMITS[_k] = {"1": 18, "2": 26, "3": 52}.get(_k[-1], 20)
 LONG_INTENTS = ("defend", "last_defense")          # 길면 두 마디로 끊어 보냄
@@ -644,6 +677,19 @@ LEN_HINT = {"react": "감탄이나 한두 단어", "short_ask": "몇 단어짜�
 ROLE_WORDS = "의사|경찰|기자|군인|정치인|영매|스파이|마담|마피아"
 SELF_ROLE_RE = re.compile(rf"(저|나|제가|내가|난|전)\s*(는|가|은)?\s*(진짜|사실)?\s*({ROLE_WORDS})(이|예|입|임|야|라|인데|이야|이에)")
 BANMAL_END = re.compile(r"(야|냐|니|해|어|지|자|라|래|네|걸|거|임|음|함|됨|듯|ㅋ|ㅎ|ㅠ|\?|!|\.|~)\s*[?!.~ㅋㅎㅠ]*\s*$")
+
+
+_NAME_RE = {}
+NAME_AFTER = (r"(?=$|[\s.,!?~…ㅋㅎㅠㅜ\"')\]:;/]|님|씨|아(?![가-힣])|야(?![가-힣])|이랑|이가|이는|이도|이요|은|는|이|가|을|를|의|도|만|"
+              r"에게|한테|랑|과|와|요|쪽|네|도|도요|같|말|짱|형|누나|선배)")
+
+
+def name_re(name):
+    """이름을 단어로 찾는 정규식 (조사·호칭은 붙어도 됨)."""
+    r_ = _NAME_RE.get(name)
+    if r_ is None:
+        r_ = _NAME_RE[name] = re.compile(r"(?:^|(?<=[\s.,!?~…ㅋㅎㅠ\"'(\[@:/]))" + re.escape(name) + NAME_AFTER)
+    return r_
 
 
 def has_batchim(word):
@@ -688,6 +734,15 @@ def hangul_ok(t):
     return sum('가' <= c <= '힣' or 'ㄱ' <= c <= 'ㅣ' for c in letters) / len(letters) >= .6
 
 
+def split_many(t, n=3):
+    """최후 변론처럼 긴 말: 문장 단위로 최대 n 마디."""
+    parts = [p.strip() for p in re.split(r"(?<=[.!?~…])\s+|(?<=[ㅋㅠ])\s+", t) if p.strip()]
+    while len(parts) > n:
+        i = min(range(len(parts) - 1), key=lambda k: len(parts[k]) + len(parts[k + 1]))
+        parts[i:i + 2] = [parts[i] + " " + parts[i + 1]]
+    return parts or [t]
+
+
 def split_two(t, at=22):
     """긴 해명은 두 마디로: 문장 끝(. ! ? ~ ㅋ ㅠ)에서 나눔."""
     if len(t) <= at:
@@ -716,6 +771,27 @@ def leaked(line, name=""):
     return False
 
 
+def parse_reply(text):
+    """Claude 답: JSON {say, suspect, vote, memo, judge, target} → dict. JSON 이 아니면 {'say': 원문}."""
+    if text is None:
+        return None
+    t = text.strip()
+    m = re.search(r"\{.*\}", t, re.S)
+    if m:
+        try:
+            d = json.loads(m.group(0))
+            if isinstance(d, dict):
+                return {k: (str(v).strip() if v is not None else "") for k, v in d.items()}
+        except Exception:
+            pass
+        # 따옴표가 깨진 JSON: "say": "..." 만이라도
+        sm = re.search(r'"say"\s*:\s*"([^"]*)"', t)
+        if sm:
+            return {"say": sm.group(1)}
+        return {"say": ""}
+    return {"say": t}
+
+
 def clean_line(line, name, limit=None):
     """Claude 답에서 대사 한 줄만 깔끔하게. 'PASS'(할 말 없음)면 빈 문자열."""
     line = (line or "").strip().split("\n")[0].strip()
@@ -727,7 +803,7 @@ def clean_line(line, name, limit=None):
     line = line.strip('"').strip("“”").strip()
     if leaked(line, name):                        # 지시문·메모가 그대로 나온 경우 → 기본 대사로
         return ""
-    if SWEAR_RE.search(line):                     # AI 는 욕하지 않음
+    if STRONG_SWEAR_RE.search(line):              # AI 는 센 욕은 안 함 (가벼운 '아 씨', '개-' 정도만)
         return ""
     if not hangul_ok(line):
         return ""
@@ -834,6 +910,7 @@ class Game:
         self.pester = {}                                     # (day, 사람) → 재촉·질문 받은 수
         self.next_depth = {}                                 # 다음 질문이 대화 줄기의 몇 번째 꼬리인지
         self.fight_t = -99
+        self.decq = queue.Queue()                            # Claude 결정·속마음 결과 (스레드 → 메인)
         self._seq_t = {}                                   # 구경꾼 반응(말림·편들기·부추김) 마지막 시각
         self.ai_fights = {}                                  # day → AI 끼리 긁은 횟수 (끝없는 싸움 방지)
         self._pseq = 0
@@ -912,8 +989,19 @@ class Game:
             at = now
             for i, part in enumerate(text.split("\n")):            # 긴 해명은 두 마디로 나눠 보냄
                 at += min(2.0, 0.4 + len(part) * 0.04) if prio == 0 else min(3.0, 0.6 + len(part) * 0.06)  # 타자 시간
+                if intent == "last_defense" and i:
+                    at += 3.0                                   # 변론은 한 마디씩 끊어서
                 self.outq.append(dict(pid=pid, text=part, scope=scope, kind=kind, ph=ph, day=day,
                                       prio=prio, ready=at, born=now, part=i, intent=intent, to=to))
+        while True:
+            try:
+                kind, pid, data, day = self.decq.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "absorb" and pid in self.brains:
+                self.brains[pid].absorb(data, day)
+            elif kind == "decide":
+                self._decided(pid, *data)
         if self.phase == "end":
             for x in [e for e in self.end_lines if e[0] <= now]:
                 self.end_lines.remove(x)
@@ -951,6 +1039,52 @@ class Game:
                 if bs and self.pester_ok(t):
                     self.pester[(self.day, t)] = self.pester.get((self.day, t), 0) + 1
                     self.ai_line(self.rng.choice(bs).id, "nudge", x=t)
+
+    def _direct(self, seq0, who, text):
+        """규칙 감독 (추가 Claude 호출 없음): 방금 말에 반응할 만한 AI 를 고름.
+        이름 불림·지목됨·화남·의심 대상·대화 상대 → 우선, 방금 말한 사람은 뒤로."""
+        if self.phase != "day" or self.outq:
+            return
+        if any(m["s"] > seq0 and m["k"] == "say" for m in self.chat):
+            return                                        # 이미 누가 받았음
+        named = self.mentions(text, who)
+        acc = any(w in text for w in ACCUSE_W) and not opinion_question(text)
+        if "?" in text and not named:
+            chance = .9
+        elif CLAIM_RE.search(text) or (named and acc):
+            chance = .8
+        elif named:
+            chance = .6
+        elif len(norm(text)) <= 4:
+            chance = .15
+        else:
+            chance = .45
+        if self.players[who].ai and self.ai_streak >= 3:
+            chance *= .5
+        if self.rng.random() > chance:
+            return
+        best, score = None, -99
+        for b in self._live_brains():
+            if b.id == who or self.now < b.sulk_until:
+                continue
+            sc = b.talk * .4 + self.rng.uniform(0, 1)
+            if b.id in named:
+                sc += 3
+            if acc and b.id in named:
+                sc += 2
+            sc += b.level(who) * 1.2
+            if not b.mafia_side and b.conf(who) >= 1.5:
+                sc += 1.5
+            if any(n == b.top() for n in named):
+                sc += 1
+            if any({q["a"], q["t"]} == {b.id, who} for q in self.questions[-6:] if q["day"] == self.day):
+                sc += 1
+            last = self.ai_last.get(b.id, -99)
+            sc -= 2 if self.now - last < 8 else (.8 if self.now - last < 20 else 0)
+            if sc > score:
+                best, score = b, sc
+        if best:
+            best.respond(who, text)
 
     def pester_ok(self, h):
         """조용한 사람을 하루 두 번 넘게 찌르지 않기 (자리 비웠을 수도)."""
@@ -1020,6 +1154,12 @@ class Game:
                 return                                          # 같은 AI 잡담은 9초에 한 번
             if self.too_similar(o["text"], o["pid"]):
                 return                                          # 방금 나온 말과 비슷하면 버림
+        it = o.get("intent") or ""
+        if (it == "reply" or it.startswith("ans_")) and o.get("part", 0) == 0:
+            la = getattr(self, "_last_ans", None)
+            if la and la[0] == o["pid"] and now - la[1] < 5:
+                return                                          # 같은 질문에 두 번 대답하지 않게
+            self._last_ans = (o["pid"], now)
         self.ai_last[o["pid"]] = now
         self.ai_post_t = now
         # 분위기: 첫날은 탐색이라 느긋하게, 사망 뒤엔 조금 빠르게, 짧은 리액션 뒤엔 바로 다음 말
@@ -1438,6 +1578,8 @@ class Game:
         self._analyze(pid, text)
         self._track_q(pid, text)
         self._provoke(pid, text)
+        seq0 = self.seq
+        self.schedule(2.2, lambda: self._direct(seq0, pid, text))
         if not p.ai:
             self.next_ai_slot = max(self.next_ai_slot, self.now + 2.5)   # 사람 말 뒤엔 잠깐 숨 고르기
             self.ai_chain = 0
@@ -1548,7 +1690,10 @@ class Game:
         """사람이 AI 이름을 부르거나 질문하면 그 AI 가 바로 대답."""
         if self.phase not in ("day", "vote", "judge", "morning", "verdict", "intro"):
             return
-        who = [t for t in self.mentions(text, pid) if t in self.brains and self.players[t].alive]
+        named = self.mentions(text, pid)
+        who = [t for t in named if t in self.brains and self.players[t].alive]
+        if not who and any(not self.players[t].ai for t in named):
+            return                                        # 사람이 사람에게 한 말 → AI 는 끼어들지 않음
         if not who and ("?" in text or "다들" in text or "누구" in text or "AI" in text.upper()):
             cands = [b.id for b in self._live_brains()]
             if cands:
@@ -1558,11 +1703,14 @@ class Game:
 
     # ------------------------------------------------ 채팅 해석 (AI 들이 듣는 내용)
     def mentions(self, text, speaker):
-        """문장에 나온 순서대로 (먼저 부른 사람이 앞)."""
+        """문장에 나온 순서대로 (먼저 부른 사람이 앞). 이름은 단어 단위로만: '찬'이 '찬성' 안에서 잡히지 않게."""
         out = []
         for p in self.players.values():
-            if p.id != speaker and len(p.name) >= 1 and p.name in text:
-                out.append((text.index(p.name), p.id))
+            if p.id == speaker or not p.name:
+                continue
+            m = name_re(p.name).search(text)
+            if m:
+                out.append((m.start(), p.id))
         return [pid for _, pid in sorted(out)]
 
     def _analyze(self, pid, text):
@@ -1573,6 +1721,8 @@ class Game:
         acc = any(w in text for w in ACCUSE_W)
         if opinion_question(text):
             acc = False                                   # '누구 의심해?' 는 질문이지 의심이 아님
+        if "?" in text and re.search(r"(투표\s*했|투표했|찍었어\?|찍었냐|찍었어요\?|투표 안|기권했)", text) and "왜" not in text:
+            acc = False                                   # '민재 투표했어?' 는 확인 질문
         if acc and re.search(r"왜\s*\S*\s*찍|표\s*준\s*이유", text):
             who = who[:1]                                 # '○○ 어제 왜 △△ 찍었어?' → 의심받는 건 ○○ 뿐
         dfn = any(w in text for w in DEFEND_W)
@@ -1626,6 +1776,10 @@ class Game:
         else:
             mine = pers.get("tj" if own == "ban" else "t", {})
             gen = GENERIC
+        if SWEAR_LV.get(self.players[pid].persona) and intent in LIGHT_B and self.rng.random() < .3:
+            light = (LIGHT_B if sp == "ban" else LIGHT_J).get(intent)
+            if light:
+                return light
         own_l, gen_l = mine.get(intent) or [], gen.get(intent) or []
         if own_l and intent in ("defend", "accuse", "ask", "quiet", "agree", "react", "dead", "vote"):
             return own_l + [t for t in gen_l if t not in own_l]   # 캐릭터 대사 + 공통 대사 (반복 줄이기)
@@ -1662,6 +1816,8 @@ class Game:
         pool.sort(key=lambda t: (t in used, seen.count(t)))
         best = None
         for tmpl in pool:
+            if any(not fmt.get(k) for k in re.findall(r"\{(\w)\}", tmpl)):
+                continue                                  # 빈 이름이 들어가는 문장은 건너뜀 ('님 어때요?')
             try:
                 text = fix_josa(tmpl.format(**fmt), [v for v in fmt.values() if v])
             except (KeyError, IndexError):
@@ -1672,8 +1828,9 @@ class Game:
                 best = (tmpl, text)
                 break
         if best is None:
-            t = self.rng.choice(self.templates(pid, "quiet"))
-            best = (t, t.format(**fmt))
+            qs = [t for t in self.templates(pid, "quiet") if "{" not in t] or ["음"]
+            t = self.rng.choice(qs)
+            best = (t, t)
         used.append(best[0])
         del used[:-6]
         seen.append(best[0])
@@ -1683,7 +1840,7 @@ class Game:
         p = self.players[pid]
         base = fb if (intent == "chat" and fb) else intent
         if intent == "reply":                         # 대체 대사: 의심받았으면 해명, 아니면 '모르겠다'
-            base = "defend" if (p.name in q and any(w in q for w in ACCUSE_W)) else "quiet"
+            base = "defend" if (name_re(p.name).search(q) and any(w in q for w in ACCUSE_W)) else "quiet"
         if intent == "ghost":
             base = "ghost"
         b = self.brains.get(pid)
@@ -1694,7 +1851,9 @@ class Game:
                    z=self.name(z) if z else "", t=self.name(tt) if tt else (self.name(y) if y else ""), r=r_,
                    v=self.name(v) if v else "")
         text = self.pick_text(pid, base, fmt)
-        if base in LONG_INTENTS or heated(base):
+        if base == "last_defense":
+            text = "\n".join(split_many(text, 3))
+        elif base in LONG_INTENTS or heated(base):
             text = "\n".join(split_two(text))
         kind = {"mafia": "mafia", "dead": "dead"}.get(scope, "say")
         phase, day = self.phase, self.day
@@ -1717,6 +1876,10 @@ class Game:
                     return
                 done["v"] = True
                 self.llm_busy = max(0, self.llm_busy - 1)
+                d = parse_reply(line) if line is not None else None
+                if d:
+                    self.decq.put(("absorb", pid, d, day))     # 의심·투표 의향·메모 → 메인 스레드에서 반영
+                    line = d.get("say", "")
                 said = clean_line(line, p.name, LIMITS.get(intent, MAX_LEN)) if line is not None else ""
                 why = "claude" if said else ("timeout/error" if line is None else "filtered")
                 if said and intent not in ("claim_mafia", "claim_clear", "counter", "last_defense", "ghost") \
@@ -1730,7 +1893,9 @@ class Game:
                     said, why = "", "team-leak"
                 if said and intent not in DIRECT and self.too_similar(said, pid):
                     said, why = "", "similar"
-                if said and (intent in LONG_INTENTS or heated(intent)):
+                if said and intent == "last_defense":
+                    said = "\n".join(split_many(said, 3))
+                elif said and (intent in LONG_INTENTS or heated(intent)):
                     said = "\n".join(split_two(said))
                 self.ai_log.append(dict(t=round(self.now, 1), day=day, ph=phase, who=p.name, intent=intent,
                                         src=why, x=(said or text).replace("\n", " / ")))
@@ -1742,6 +1907,86 @@ class Game:
         self.ai_log.append(dict(t=round(self.now, 1), day=day, ph=phase, who=p.name, intent=intent, src="template",
                                 x=text.replace("\n", " / ")))
         self.inbox.put((pid, text, scope, kind, phase, day, intent, to))
+
+    def decide(self, pid, kind, x=None, cands=(), fallback=None, wait=8, mafia_chat=False):
+        """투표·찬반·밤 능력을 Claude 가 판단. 답이 없거나 이상하면 fallback(규칙)으로."""
+        if not self.stylist or time.time() < getattr(self.stylist, "cool_until", 0) or self.llm_busy >= 6:
+            if fallback:
+                fallback()
+            return
+        names = ", ".join(self.name(c) for c in cands)
+        req = self.llm_request(pid, kind, x, None, "all", names, "")
+        req["mafia_chat"] = mafia_chat
+        done = {"v": False}
+        self.llm_busy += 1
+        ph, day = self.phase, self.day
+
+        def cb(text):
+            if done["v"]:
+                return
+            done["v"] = True
+            self.llm_busy = max(0, self.llm_busy - 1)
+            self.decq.put(("decide", pid, (kind, parse_reply(text), list(cands), x, ph, day, fallback, mafia_chat), day))
+        self.stylist(req, cb)
+        self.schedule(wait, lambda: cb(None))
+
+    def _decided(self, pid, kind, d, cands, x, ph, day, fallback, mafia_chat):
+        """(메인 스레드) 결정 결과 적용."""
+        b, p = self.brains.get(pid), self.players[pid]
+        if self.phase != ph or self.day != day or not p.alive:
+            return
+        ok = False
+        if d:
+            if b:
+                b.absorb(d, day)
+            if kind == "vote_decide":
+                v = d.get("vote", "")
+                if v in ("기권", "없음", "abstain"):
+                    self.vote(pid, None)
+                    ok = True
+                else:
+                    t = self.find_name(v, cands)
+                    if t and not (b and b.mafia_side and t in b.team() and self.rng.random() < .85):
+                        self.vote(pid, t)
+                        ok = True
+            elif kind == "judge_decide":
+                j = d.get("judge", "")
+                if "찬" in j or "반" in j:
+                    self.judge_vote(pid, "찬" in j)
+                    ok = True
+            elif kind == "night_decide":
+                tg = d.get("target", "")
+                if tg in ("안함", "안 함", "없음") and p.role == "기자":
+                    self.night_action(pid, None)
+                    ok = True
+                else:
+                    t = self.find_name(tg, cands)
+                    if t and not (p.role == "마피아" and b and t in b.team()):
+                        if p.role == "마피아" and self.mafia_pick is not None:
+                            t = self.mafia_pick                       # 동료가 먼저 골랐으면 따름
+                        self.night_action(pid, t)
+                        ok = True
+            say = clean_line(d.get("say", ""), p.name, 30) if ok else ""
+            if say:
+                scope = "mafia" if kind == "night_decide" and mafia_chat else "all"
+                if kind != "night_decide" or mafia_chat:
+                    self.ai_log.append(dict(t=round(self.now, 1), day=day, ph=ph, who=p.name, intent=kind, src="claude", x=say))
+                    self.inbox.put((pid, say, scope, "mafia" if scope == "mafia" else "say", ph, day, "vote", None))
+        if not ok and fallback:
+            fallback()
+
+    def find_name(self, text, cands):
+        """Claude 가 적은 이름 → pid (후보 안에서)."""
+        text = (text or "").strip().strip("\"'").replace("님", "")
+        if not text:
+            return None
+        for c in cands:
+            if self.name(c) == text:
+                return c
+        for c in cands:
+            if self.name(c) and (name_re(self.name(c)).search(text) or text in self.name(c)):
+                return c
+        return None
 
     def llm_request(self, pid, intent, x, d, scope, q, default, y=None, z=None, r_="", v=None):
         """Claude 에게 넘길 상황 정보 (그 AI 가 알 수 있는 것만)."""
@@ -1789,10 +2034,15 @@ class Game:
                     alive=[o.name for o in self.alive_list()], public=public, claims=claims,
                     known={self.name(k): v for k, v in self.knowledge[pid].items()}, suspects=sus,
                     recent=recent[-20:], scope=scope, votes=votes,
+                    swear=bool(SWEAR_LV.get(p.persona)),
                     speech=self.speech(pid), how=STYLES.get(p.persona, DEFAULT_STYLE)["how"],
                     skill=STYLES.get(p.persona, DEFAULT_STYLE)["skill"], thread=self.thread_text(pid, x), length=LEN_HINT.get(intent, "아주 짧게, 보통 한두 마디. 근거를 댈 때만 한 문장"),
                     open_q=openq, my_q=mine_q, talk_log=tlog, my_past=my_past, ends=ends,
-                    big=intent in BIG_INTENTS, dead=not p.alive, mood=mood)
+                    big=intent in BIG_INTENTS, dead=not p.alive, mood=mood,
+                    roles=sorted({q.role for q in self.players.values()}),
+                    memo=[f"{d_}일 {ph_}: {m_}" for d_, ph_, m_ in (b.memos[-6:] if b else [])],
+                    fmt={"vote_decide": "vote", "judge_decide": "judge", "night_decide": "night"}.get(intent, "chat"),
+                    ability=ROLE_INFO.get(p.role, ("", ""))[1])
 
     def _ai_post(self, pid, text, scope, kind, to=None):
         p = self.players[pid]
@@ -1817,6 +2067,8 @@ class Game:
         self._analyze(pid, text)
         self._track_q(pid, text, to)
         self._provoke(pid, text)
+        seq0 = self.seq
+        self.schedule(2.6, lambda: self._direct(seq0, pid, text))
         # 리액션: 의심·경찰 주장 같은 큰 말에는 다른 AI 한 명이 짧게 반응 (템플릿, 4초에 한 번)
         big = CLAIM_RE.search(text) or (self.mentions(text, pid) and any(w in text for w in ACCUSE_W))
         if big and self.phase == "day" and self.now - self.last_react > 4 and self.rng.random() < .45:
@@ -1921,6 +2173,9 @@ class Brain:
         self.peak = {}              # 상대 → 오늘 최고 단계
         self.talked_back = {}       # (day, 상대) → 대꾸한 횟수
         self.sulk_until = -99
+        self.memos = []             # (day, 단계, 속마음 한 줄) — Claude 가 남긴 생각 기록
+        self.llm_vote = None        # (day, pid|'abstain')  Claude 가 말한 투표 의향
+        self.llm_sus = None         # (day, pid)
         self.pick_y = None
         self.hist = {}              # day → 그날 내가 가장 의심한 사람
         self.changed = set()
@@ -1986,6 +2241,15 @@ class Brain:
     def on_night(self):
         g = self.g
         if not g._can_act(self.p):
+            return
+        if g.stylist and g.targets(self.id):
+            idx = list(g.brains).index(self.id)
+            mafia_chat = self.role in ("마피아",)
+            g.schedule(2 + idx * 1.2 + self.rng.uniform(0, 2),            # 밤 30초 안에서 나눠 보냄
+                       lambda: g.phase == "night" and self.p.alive and self.id not in g.night
+                       and g.decide(self.id, "night_decide", cands=g.targets(self.id), fallback=self._act_night,
+                                    wait=9, mafia_chat=mafia_chat))
+            g.schedule(g._dur("night") - 5, lambda: g.phase == "night" and self._act_night())
             return
         delay = self.rng.uniform(2.5, 8)
         g.schedule(delay, self._act_night)
@@ -2066,7 +2330,7 @@ class Brain:
                     and self.rng.random() < .35):
                 g.schedule(self.rng.uniform(15, 40), lambda: g.phase == "day" and self.p.alive
                            and g.ai_line(self.id, "change_mind", x=t, y=y))
-        n = max(1, self.talk + self.rng.choice([-1, 0, 0]))
+        n = max(1, self.talk - 1 + self.rng.choice([0, 0, 1]))
         span = max(12, g.times["day"] * .7) if g.humans_alive() else 12
         times = sorted([self.rng.uniform(3, 12)] + [self.rng.uniform(15, span) for _ in range(n - 1)])
         for i, t in enumerate(times):
@@ -2182,19 +2446,25 @@ class Brain:
         g = self.g
         if g.accused != self.id:
             return
-        for t in (1.2, 6.5, 11.5)[: 2 + (self.talk >= 3)]:
-            g.schedule(t, lambda: g.phase == "defense" and self.p.alive and g.ai_line(self.id, "last_defense"))
+        g.schedule(1.2, lambda: g.phase == "defense" and self.p.alive and g.ai_line(self.id, "last_defense"))
 
     def on_judge(self):
         g = self.g
         if g.accused == self.id:
             return
-        g.schedule(self.rng.uniform(2, min(8, g._dur("judge") - 1.5)), self._judge_cast)
+        dur = g._dur("judge")
+        if g.stylist:
+            idx = list(g.brains).index(self.id)
+            g.schedule(.8 + idx * .6, lambda: g.phase == "judge" and self.p.alive and self.id not in g.judge
+                       and g.decide(self.id, "judge_decide", x=g.accused, fallback=self._judge_cast, wait=7))
+            g.schedule(dur - 1.5, lambda: g.phase == "judge" and self.id not in g.judge and self._judge_cast())
+        else:
+            g.schedule(self.rng.uniform(2, min(8, dur - 1.5)), self._judge_cast)
 
     def _judge_cast(self):
         g = self.g
         t = g.accused
-        if g.phase != "judge" or not self.p.alive or t is None:
+        if g.phase != "judge" or not self.p.alive or t is None or self.id in g.judge:
             return
         if self.mafia_side:
             yes = t not in self.team() and self.rng.random() < .85
@@ -2227,7 +2497,7 @@ class Brain:
             return                                        # 꼬리 질문엔 바로바로 대답
         self.last_called = g.now
         who_q = opinion_question(text) or re.search(r"수상한 사람|의심해\?", text)
-        accused_me = (self.p.name in text and any(w in text for w in ACCUSE_W) and not who_q)
+        accused_me = (bool(name_re(self.p.name).search(text)) and any(w in text for w in ACCUSE_W) and not who_q)
         if accused_me and not g.stylist:
             return                                    # on_accuse 가 해명함
         others = [o for o in g.mentions(text, caller) if o != self.id]
@@ -2263,6 +2533,28 @@ class Brain:
                        lambda: self.p.alive and g.ai_line(self.id, kind, x=caller, q=text, **kw))
             return
         g.schedule(delay + (0 if g.stylist else .6), lambda: self.p.alive and g.ai_line(self.id, "reply", x=caller, q=text))
+
+    def absorb(self, d, day):
+        """Claude 답의 의심·투표 의향·속마음을 기억 → 다음 말과 투표가 앞뒤가 맞게."""
+        g = self.g
+        memo = (d.get("memo") or "").strip()
+        if memo and memo not in ("없음", "-"):
+            ph = {"day": "낮", "vote": "투표", "night": "밤", "judge": "찬반", "defense": "변론"}.get(g.phase, g.phase)
+            self.memos.append((day, ph, memo[:80]))
+            del self.memos[:-12]
+        others = [o for o in self.others() if g.players[o].alive]
+        sp = g.find_name(d.get("suspect", ""), others)
+        if sp:
+            self.llm_sus = (day, sp)
+            if not self.mafia_side:
+                self.sus[sp] = self.sus.get(sp, 0) + .35
+        v = (d.get("vote") or "").strip()
+        if v in ("기권", "없음"):
+            self.llm_vote = (day, "abstain")
+        elif v and v != "미정":
+            t = g.find_name(v, others)
+            if t:
+                self.llm_vote = (day, t)
 
     # ---------------------------------------------------------- 감정
     def anger_of(self, o):
@@ -2414,7 +2706,7 @@ class Brain:
             return                                          # 경찰 주장 같은 큰 말은 따로 반응함
         names = [n for n in g.mentions(text, who) if n != self.id and g.players[n].alive]
         kind = classify_answer(text, names, self.p.name)
-        if kind != "askback" and self.p.name in text and not names:
+        if kind != "askback" and name_re(self.p.name).search(text) and not names:
             self._follow("defend", who, q)                   # 물어봤더니 나를 지목 → '왜 저요?'
             return
         y = names[0] if names else None
@@ -2566,6 +2858,32 @@ class Brain:
                 self.pick_y = self.rng.choice(cands)
         return kind, x
 
+    def respond(self, who, text):
+        """감독이 고른 사람: 방금 말에 맞게 받기."""
+        g = self.g
+        names = [n for n in g.mentions(text, who) if n != self.id and g.players[n].alive]
+        if name_re(self.p.name).search(text):
+            self.on_called(who, text, delay=.3)
+            return
+        acc = any(w in text for w in ACCUSE_W) and not opinion_question(text)
+        if names and acc:                                # 누가 누구를 의심함 → 동의·반대·이유 묻기
+            y = names[0]
+            if self.mafia_side:
+                yes = y not in self.team()
+            else:
+                yes = self.conf(y) >= 1.0 or (self.sus.get(y, 0) > .5 and self.rng.random() < .5)
+            k = self.rng.random()
+            if k < .3:
+                g.ai_line(self.id, "fu_dig", x=who, y=y, q=text)
+            else:
+                g.ai_line(self.id, "fu_agree" if yes else "fu_disagree", x=who, y=y, q=text)
+            return
+        if "?" in text and not names:                    # '다들 어때?' 같은 열린 질문
+            kind, kw = self.answer_kind(who, text)
+            g.ai_line(self.id, kind, x=who, q=text, **kw)
+            return
+        self._day_line(False)
+
     def _seduce(self):
         g = self.g
         c = g.targets(self.id)
@@ -2577,12 +2895,28 @@ class Brain:
 
     def on_vote(self):
         g = self.g
-        self.g.schedule(self.rng.uniform(3, min(14, g._dur("vote") - 2)), self._cast)
+        dur = g._dur("vote")
+        if g.stylist:
+            idx = list(g.brains).index(self.id)
+            g.schedule(1.5 + idx * 1.1 + self.rng.uniform(0, 1.5),        # 요청을 몇 초에 걸쳐 나눠 보냄
+                       lambda: g.phase == "vote" and self.p.alive and self.id not in g.votes
+                       and g.decide(self.id, "vote_decide", cands=g.targets(self.id), fallback=self._cast, wait=8))
+            g.schedule(dur - 2.5, lambda: g.phase == "vote" and self.id not in g.votes and self._cast())
+        else:
+            g.schedule(self.rng.uniform(3, min(14, dur - 2)), self._cast)
 
     def _cast(self):
         g = self.g
-        if g.phase != "vote" or not self.p.alive:
+        if g.phase != "vote" or not self.p.alive or self.id in g.votes:
             return
+        lv = self.llm_vote                                  # 토론 중에 말한 투표 의향이 있으면 그대로
+        if lv and lv[0] == g.day:
+            if lv[1] == "abstain":
+                g.vote(self.id, None)
+                return
+            if lv[1] in g.targets(self.id) and not (self.mafia_side and lv[1] in self.team()):
+                g.vote(self.id, lv[1])
+                return
         t = self.top()
         sc = self.score(t) if t else -999
         if t is not None and not self.mafia_side and self.conf(t) < 1.3:
@@ -2744,6 +3078,15 @@ def test_key(api_key, model="claude-haiku-5-5"):
         return False, f"연결 실패: {type(e).__name__} (회사 네트워크에서 api.anthropic.com 이 막혔을 수 있어요)"
 
 
+def rules_text(roles):
+    """이번 판에 있는 직업 전부 설명 (군인·정치인·영매·마담 포함)."""
+    rs = [r for r in BOARD_ORDER if r in roles] if "BOARD_ORDER" in globals() else sorted(set(roles))
+    desc = " / ".join(f"{r}({'마피아 편' if ROLE_INFO[r][0] == 'mafia' else '시민 편'}): {ROLE_INFO[r][1]}" for r in rs)
+    return ("[게임 규칙] 사내 동료들과 하는 온라인 마피아 게임. 이번 판 직업 — " + desc +
+            " 낮에 토론 → 투표 → 최다 득표자 최후 변론 → 찬반 투표로 처형. 밤 30초 동안 능력 사용."
+            " 마피아 팀이 나머지 이상이면 마피아 승, 마피아 전멸이면 시민 승.")
+
+
 RULES = ("[게임 규칙] 사내 동료들과 하는 온라인 마피아 게임. 직업: 마피아(밤에 1명 제거), 스파이(마피아 편, 밤에 1명 직업 확인), "
          "경찰(밤에 1명 마피아인지 조사), 의사(밤에 1명 보호), 기자(1회 직업 공개), 시민. "
          "낮에 토론 → 투표 → 최다 득표자 최후 변론 → 찬반 투표로 처형. 마피아 팀이 나머지 이상이면 마피아 승, 마피아 전멸이면 시민 승.")
@@ -2783,11 +3126,13 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5", model_big=None):
                   f"성격: {req['persona']}. 캐릭터 연기를 과장하지 말고 평범한 직장인처럼.\n"
                   f"말투: {tone}\n"
                   f"대화 방식: {req.get('how', '평범하게')}\n"
+                  + ("비속어: 편한 사이라 '아 씨', '개-(개수상, 개억울)', '빡치네', '젠장' 정도는 가끔 섞음. 센 욕(ㅅㅂ, 병신 등)은 절대 금지\n"
+                     if req.get("swear") else "비속어: 안 씀\n") +
                   f"추리 수준: {SKILL_DESC.get(req.get('skill', 2))}\n"
                   f"비밀 정보: 당신의 진짜 직업은 '{req['role']}'({team}). {strat}\n"
                   + (f"마피아 동료: {', '.join(req['mates'])}\n" if req["mates"] else "")
-                  + RULES + "\n"
-                  "[출력] 채팅창에 그대로 올라갈 대사만 출력. 상황 설명·메모·'○○ 역할로' 같은 지시문·글자 수 표기 금지.\n"
+                  + (rules_text(req["roles"]) if req.get("roles") else RULES) + "\n"
+                  "[출력] JSON 한 줄만. say 에는 채팅창에 그대로 올라갈 대사(상황 설명·지시문·글자 수 표기 금지).\n"
                   "[말하는 법]\n"
                   "- 단톡처럼 주고받기. 보통은 아주 짧게(한두 마디, 감탄·되묻기도 OK). 길게 말하는 건 해명할 때뿐.\n"
                   "- 방금 나온 말, 특히 나한테 온 질문에 먼저 반응. 혼자 딴 얘기 금지.\n"
@@ -2827,7 +3172,23 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5", model_big=None):
         if req.get("ends"):
             lines.append("(최근 말끝: " + ", ".join(req["ends"]) + " — 이것과 다르게)")
         where = {"mafia": "마피아끼리만 보는 비밀 채팅", "dead": "유령 채팅"}.get(req["scope"], "전체 채팅")
-        lines.append(f"\n지금 {where}에 할 말: {req['intent_desc']}  (길이: {req.get('length', '짧게')})")
+        if req.get("memo"):
+            lines.append("내 속마음 기록(남은 못 봄):\n" + "\n".join(req["memo"]))
+        fmt = req.get("fmt", "chat")
+        if fmt == "vote":
+            lines.append(f"\n{req['intent_desc']}\n"
+                         '형식: {"vote":"후보 이름 또는 기권","say":"투표 이유 한마디(안 해도 되면 빈 문자열)","memo":"속마음 한 줄"}')
+        elif fmt == "judge":
+            lines.append(f"\n{req['intent_desc']}\n"
+                         '형식: {"judge":"찬성 또는 반대","say":"한마디(안 해도 되면 빈 문자열)","memo":"속마음 한 줄"}')
+        elif fmt == "night":
+            extra = "say 에는 마피아 채팅으로 동료에게 할 짧은 말. " if req.get("mafia_chat") else "say 는 빈 문자열. "
+            lines.append(f"\n{req['intent_desc']}\n내 능력: {req.get('ability', '')}\n{extra}"
+                         '형식: {"target":"후보 이름 또는 안함","say":"","memo":"속마음 한 줄"}')
+        else:
+            lines.append(f"\n지금 {where}에 할 말: {req['intent_desc']}  (길이: {req.get('length', '짧게')})\n"
+                         '형식: {"say":"대사","suspect":"지금 제일 의심하는 사람 이름 또는 없음",'
+                         '"vote":"지금 투표하면 누구(이름/기권/미정)","memo":"왜 그렇게 생각하는지 속마음 한 줄"}')
         return system, "\n".join(lines)
 
     def stylist(req, cb):
@@ -2836,7 +3197,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5", model_big=None):
                 try:
                     system, user = build(req)
                     use = model_big if (req.get("big") and model_big and not stylist.big_off) else model
-                    body = json.dumps({"model": use, "max_tokens": 90 if req.get("big") else 60, "system": system,
+                    body = json.dumps({"model": use, "max_tokens": 220 if req.get("big") else 170, "system": system,
                                        "messages": [{"role": "user", "content": user}]}).encode("utf-8")
                     rq = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
                         "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
@@ -2880,6 +3241,25 @@ def pick_chars(count, chars, used=(), rng=None):
     return out
 
 
+# 캐릭터별 닉네임 후보 (단톡방 닉네임처럼). 성격(persona)은 그대로고 이름만 판마다 바뀜.
+NICKS = {
+    "지훈": ["지훈", "박대리", "직진남", "JH", "최과장", "칼퇴요정"],
+    "서연": ["서연", "엑셀장인", "데이터요정", "서연팀장", "정리러"],
+    "민재": ["민재", "민재짱", "MJ", "치킨러버", "장난꾸러기", "점심메뉴"],
+    "수빈": ["수빈", "빈빈", "조용한사람", "소심이", "수줍"],
+    "현우": ["현우", "정리왕", "현우선배", "HW", "회의실예약"],
+    "지은": ["지은", "리액션여왕", "꽃지은", "지은쓰", "공감요정"],
+    "도윤": ["도윤", "무소음", "DY", "도윤씨", "말아끼기"],
+    "하린": ["하린", "탐정하린", "의심병", "셜록", "하린쓰"],
+    "태호": ["태호", "태호형", "분위기메이커", "넉살왕", "아재개그"],
+    "유나": ["유나", "신입유나", "막내", "새내기", "유나뿡"],
+}
+
+
+def _clash(a, b):
+    return a == b or a in b or b in a
+
+
 def ai_members(count, taken_names, rng=None, chars=None, used_chars=()):
     rng = rng or random.Random()
     names = list(PERSONAS)
@@ -2888,9 +3268,17 @@ def ai_members(count, taken_names, rng=None, chars=None, used_chars=()):
     out = []
     for i in range(count):
         base = names[i % len(names)]
-        n, k = base, 2
-        while n in taken_names:
-            n, k = f"{base}{k}", k + 1
+        pool = list(NICKS.get(base, [base]))
+        rng.shuffle(pool)
+        if rng.random() < .4 and base in pool:            # 40%는 본명 그대로
+            pool.remove(base)
+            pool.insert(0, base)
+        n = next((c for c in pool if not any(_clash(c, t) for t in taken_names)), None)
+        k = 2
+        while n is None:
+            c = f"{base}{k}"
+            n = c if not any(_clash(c, t) for t in taken_names) else None
+            k += 1
         taken_names.add(n)
         out.append(dict(id=f"ai-{i}-{rng.randrange(1 << 30):x}", name=n, ai=True, persona=base, ch=chs[i]))
     return out
