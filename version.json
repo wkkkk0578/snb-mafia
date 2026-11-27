@@ -1,11 +1,11 @@
 {
- "version": 9,
- "note": "직업 4종 추가(군인·정치인·영매·마담), 직업판",
+ "version": 10,
+ "note": "나갔다 들어오면 인원 중복되는 버그 수정",
  "files": {
-  "mafia.py": "e88570a5796945303cec8e6fe8f9b815eb7b614a57e67d54baee087adc11408c",
+  "mafia.py": "f604817bbec95245c558c70918c98fb0c45e6c4db5c078ce4169a51f86b84e2d",
   "mafia_core.py": "56fa3dee74996deb122c0df40ea6e54acf81899394fb1c692a860b86fe8db8d5",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "758094b6afa201cf21e56a6bda64c4e1b169fff9f99cb7d21025e1a1624dda72"
+  "안내.txt": "02080e8447dd935f03eadd4ae3e515dc5163dfc5a1a643c3b82c6a8de4b5b507"
  }
 }

@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.1"
+VERSION = "1.2"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -166,7 +166,17 @@ class Host:
         self.notices = []
 
     def humans(self):
-        return [m for m in self.order if m in self.members]
+        out = []
+        for m in self.order:                      # 같은 사람이 두 번 들어가지 않게 (나갔다 다시 들어온 경우)
+            if m in self.members and m not in out:
+                out.append(m)
+        return out
+
+    def drop(self, mid):
+        self.members.pop(mid, None)
+        if mid in self.order:
+            self.order.remove(mid)
+        self.last_lobby = 0
 
     def nick_of(self, mid):
         return self.members.get(mid, {}).get("nick", "?")
@@ -191,13 +201,13 @@ class Host:
                 used = {v.get("ch") for v in self.members.values()}
                 self.members[mid] = dict(nick=self._unique(mid, m.get("nick")), seen=time.time(),
                                          ch=core.pick_chars(1, self.chars, used)[0])
-                self.order.append(mid)
+                if mid not in self.order:
+                    self.order.append(mid)
                 self.last_lobby = 0
             self.members[mid]["seen"] = time.time()
         elif t == "bye":
             if mid in self.members and not (self.game and mid in self.game.players):
-                self.members.pop(mid, None)
-                self.last_lobby = 0
+                self.drop(mid)
         elif t == "act" and self.game:
             self.act(mid, m.get("k"), m.get("target"), m.get("text"))
         elif t == "lchat" and mid in self.members:
@@ -248,8 +258,7 @@ class Host:
         # 대기실에서 10초 넘게 소식 없는 사람 정리
         if not self.game:
             for mid in [k for k, v in self.members.items() if k != self.me and now - v["seen"] > 12]:
-                self.members.pop(mid, None)
-                self.last_lobby = 0
+                self.drop(mid)
         if now - self.last_lobby > 2.0:
             self.last_lobby = now
             self.net.send(self.lobby_msg())
