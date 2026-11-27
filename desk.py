@@ -233,6 +233,88 @@ def tomb_img():
     return im
 
 
+def bomb_img(spark=True, big=1.0):
+    """💣 심지 달린 폭탄 (불꽃 깜빡임은 spark 로)."""
+    w, h = 40 * big, 44 * big
+
+    def dr(g, k):
+        W, H = w * k, h * k
+        r_ = W * .36
+        cx, cy = W * .44, H * .6
+        g.ellipse((cx - r_, cy - r_, cx + r_, cy + r_), fill=(34, 34, 42, 255))
+        g.ellipse((cx - r_ * .55, cy - r_ * .6, cx - r_ * .1, cy - r_ * .2), fill=(110, 110, 124, 255))
+        g.rectangle((cx + r_ * .35, cy - r_ * 1.05, cx + r_ * .75, cy - r_ * .7), fill=(70, 70, 80, 255))
+        g.line((cx + r_ * .6, cy - r_ * 1.0, W * .82, H * .16), fill=(150, 112, 70, 255), width=int(2.6 * k))
+        if spark:
+            sx, sy = W * .84, H * .13
+            for rr, col in ((7.5, (255, 140, 40, 235)), (4.5, (255, 220, 90, 255)), (2.2, (255, 255, 230, 255))):
+                g.ellipse((sx - rr * k * big, sy - rr * k * big, sx + rr * k * big, sy + rr * k * big), fill=col)
+    return soft_shadow(smooth(w, h, dr), blur=3, dy=1.5, alpha=70)
+
+
+def cage_img(w, h):
+    """감옥 창살."""
+    def dr(g, k):
+        W, H = w * k, h * k
+        g.rounded_rectangle((0, 0, W - 1, 7 * k), 3 * k, fill=(80, 84, 96, 255))
+        g.rectangle((0, H - 6 * k, W - 1, H - 1), fill=(80, 84, 96, 255))
+        n = max(3, int(w / 14))
+        for i in range(n + 1):
+            x = i * (W - 4 * k) / n + 2 * k
+            g.rectangle((x - 1.6 * k, 4 * k, x + 1.6 * k, H - 4 * k), fill=(96, 100, 114, 235))
+    im = smooth(w, h, dr)
+    ImageDraw.Draw(im).text((px(w / 2), px(16)), "🔒", font=font(12 * SC["v"]), fill=INK, anchor="mm")
+    return im
+
+
+def ring_img():
+    """건넬 수 있는 대상 강조 (발밑 고리)."""
+    w, h = SIZE * 1.0, 16
+    def dr(g, k):
+        g.ellipse((0, 0, w * k - 1, h * k - 1), outline=(255, 120, 60, 255), width=int(3 * k))
+    return smooth(w, h, dr)
+
+
+_WHEEL = {}
+WHEEL_COLS = [(118, 196, 120), (120, 160, 230), (240, 170, 80), (130, 130, 150), (200, 90, 110)]
+
+
+def wheel_img(slots, angle, label=""):
+    """룰렛판 (칸 크기 = 확률). angle: 도(시계 방향 회전)."""
+    D = 230
+    key = tuple((sl[0], sl[2]) for sl in slots)
+    base = _WHEEL.get(key)
+    if base is None:
+        k = 2
+        base = Image.new("RGBA", (D * k, D * k), (0, 0, 0, 0))
+        g = ImageDraw.Draw(base)
+        tot = sum(sl[2] for sl in slots)
+        a0 = -90
+        for i, (key_, lab, w_, *_) in enumerate(slots):
+            a1 = a0 + 360 * w_ / tot
+            g.pieslice((4, 4, D * k - 4, D * k - 4), a0, a1, fill=WHEEL_COLS[i % 5] + (255,), outline=(255, 255, 255, 255), width=4)
+            mid = math.radians((a0 + a1) / 2)
+            tx, ty = D * k / 2 + math.cos(mid) * D * k * .32, D * k / 2 + math.sin(mid) * D * k * .32
+            g.text((tx, ty), (slots[i][3] if len(slots[i]) > 3 else lab), font=font(26), fill=(255, 255, 255, 255), anchor="mm")
+            a0 = a1
+        g.ellipse((D * k / 2 - 22, D * k / 2 - 22, D * k / 2 + 22, D * k / 2 + 22), fill=(255, 255, 255, 255))
+        base = base.resize((px(D), px(D)), Image.LANCZOS)
+        _WHEEL[key] = base
+    rot = base.rotate(-angle, resample=Image.BICUBIC)
+    W, H = rot.width, rot.height + px(54)
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out.alpha_composite(rot, (0, px(14)))
+    d = ImageDraw.Draw(out)
+    c = W / 2
+    d.polygon([(c - px(11), 0), (c + px(11), 0), (c, px(26))], fill=(40, 40, 48, 255))   # 바늘 (위)
+    if label:
+        f = font(14 * SC["v"])
+        tw = f.getlength(label)
+        d.rounded_rectangle((c - tw / 2 - px(10), H - px(34), c + tw / 2 + px(10), H - px(6)), px(12), fill=(255, 255, 255, 235))
+        d.text((c, H - px(20)), label, font=f, fill=INK, anchor="mm")
+    return out
+
+
 def ground_shadow():
     w, h = SIZE * 0.7, 9
     return smooth(w, h, lambda g, k: g.ellipse((0, 0, w * k - 1, h * k - 1), fill=(40, 30, 30, 60)))
@@ -540,6 +622,9 @@ class Avatar:
         self.hop_t = -99                         # 말할 때 톡 튀는 시작 tick
         self.rfx = None                          # 남의 캐릭터: 받은 위치 (무대 안 비율 0~1)
         self.grave_x = None
+        self.fx, self.fx_until = None, 0.0       # 연출 포즈: surprise 놀람 / flat 납작 / jump 점프 / dance 춤
+        self.drive = None                        # (방장) AI 이동 지시: (종류, 목표 x)
+        self.jail_x = None                       # 감옥 안 자리 (갇혔으면)
 
     @property
     def alive(self):
@@ -570,8 +655,33 @@ class Avatar:
             if self.grave_x is not None and self.die_t >= Desk.TOMB_START:
                 self.x = self.grave_x                # 꺼진 뒤 무덤은 묘지로
             return
+        if self.jail_x is not None:                # 감옥: 안으로 걸어 들어가 꼼짝 못 함
+            self.manual = 0
+            d = self.jail_x - self.x
+            if abs(d) > 1.2:
+                self.x += max(-WALK_FAST, min(WALK_FAST, d))
+                self.face, self.state, self.moving = (1 if d > 0 else -1), "walk", True
+            else:
+                self.x, self.state, self.moving = self.jail_x, "idle", False
+            return
         if target is not None and not self.manual and self.state != "jump":
             return self.go_to(target, center)
+        if self.sim and self.drive and not self.manual and self.state != "jump":
+            kind, tx = self.drive                    # 폭탄: 쫓기 / 도망 / 다가가기
+            d = tx - self.x
+            if kind == "flee":
+                step = (-1 if d > 0 else 1) * WALK_FAST * 1.1
+            else:
+                sp = RUN if (kind == "chase" and abs(d) > 160) else WALK_FAST
+                step = max(-sp, min(sp, d)) if abs(d) > 8 else 0
+            self.x += step
+            if step:
+                self.face, self.state = (1 if step > 0 else -1), "walk"
+                self.run = abs(step) > WALK_FAST
+            else:
+                self.state = "idle"
+            self.x = max(lo, min(hi, self.x))
+            return
         if not self.sim:
             if self.rfx is not None:
                 self.rx = lo + self.rfx * (hi - lo)
@@ -658,6 +768,20 @@ class Avatar:
     def pose(self):
         """→ (프레임 이름, 좌우반전, 가로배율, 세로배율, 각도, y 들썩임)"""
         k, flip = self.tick, self.face > 0
+        if self.jail_x is not None and abs(self.x - self.jail_x) < 2:
+            return "서있기", flip, 1.25, 0.62, 0, 0          # 감옥: 납작
+        if self.fx and time.time() < self.fx_until:
+            f = self.fx
+            if f == "flat":
+                return "서있기", flip, 1.35, 0.55, 0, 0
+            if f == "surprise":
+                fr = "놀람" if "놀람" in self.imgs else ("점프" if "점프" in self.imgs else "서있기")
+                return fr, flip, 1, 1, 0, abs(math.sin(k / 3)) * 10
+            if f == "dance":
+                fr = "점프" if "점프" in self.imgs else "서있기"
+                return (fr if k // 6 % 2 else "서있기"), (k // 6 % 2 == 0), 1, 1, 8 * math.sin(k / 4), abs(math.sin(k / 3)) * 14
+            if f == "jump":
+                return ("점프" if "점프" in self.imgs else "서있기"), flip, 1, 1, 0, abs(math.sin(k / 4)) * 22
         if self.y > 0:
             return "점프", flip, 1, 1, 0, 0
         walking = (self.state == "walk") if self.sim else self.moving
@@ -706,6 +830,12 @@ class Desk:
         self.zone = (0.0, self.W, 0.0, self.W)   # (무대 왼쪽, 오른쪽, 생존자 구역 왼쪽, 오른쪽)
         self.dead_order = []
         self._shadow = None
+        self.bomb = None                         # (holder, 진행도 0~1)
+        self.jail_ids = set()
+        self.hl = None                           # 건넬 수 있는 대상 강조
+        self.roul = None                         # (룰렛 정보, 이 PC 기준 회전 시작 시각)
+        self.reach = SIZE * 1.1                  # 건넬 수 있는 거리 (논리 px)
+        self.extra = {}                          # 폭탄·감옥·고리·룰렛 창
         self.root.after(1000 // FPS, self.loop)
 
     # ------------------------------------------------ 외부에서 부르는 것
@@ -753,22 +883,30 @@ class Desk:
             if not a.alive and a.id not in self.dead_order:
                 self.dead_order.append(a.id)
         grave_w = len(self.dead_order) * SIZE * 0.95 + (SIZE * 0.4 if self.dead_order else 0)
-        live_w = max(SIZE * 3, n_alive * GAP * 1.1 + SIZE)
-        zw = min(self.W, grave_w + live_w)
+        jails = [p for p in self.order if p in self.jail_ids and p in self.avs and self.avs[p].alive] + \
+                [p for p in self.jail_ids if p not in self.order and p in self.avs and self.avs[p].alive]
+        jail_w = len(jails) * SIZE * 0.95 + SIZE * 0.5 if jails else 0
+        live_w = max(SIZE * 3, (n_alive - len(jails)) * GAP * 1.1 + SIZE)
+        zw = min(self.W, grave_w + live_w + jail_w)
         want = self.anchor() if self.anchor else self.W / 2
         self.zc = want if self.zc is None else self.zc + (want - self.zc) * 0.08
         x0 = min(max(0.0, self.zc - zw / 2), self.W - zw)
-        self.zone = (x0, x0 + zw, x0 + grave_w, x0 + zw)
+        self.zone = (x0, x0 + zw, x0 + grave_w, x0 + zw - jail_w)
+        self.jail_box = (x0 + zw - jail_w, x0 + zw) if jails else None
         for i, pid in enumerate(self.dead_order):
             self.avs[pid].grave_x = x0 + SIZE * 0.5 + i * SIZE * 0.95
+        for a in self.avs.values():
+            a.jail_x = None
+        for i, pid in enumerate(jails):               # 감옥: 묘지 반대편 오른쪽 구석
+            self.avs[pid].jail_x = x0 + zw - jail_w + SIZE * 0.5 + SIZE * 0.25 + i * SIZE * 0.95
 
     def targets(self):
         """대형 모드일 때 생존자별 자리."""
         if self.mode not in ("line", "stage"):
             return {}
         _, _, lo, hi = self.zone
-        ids = [p for p in self.order if p in self.avs and self.avs[p].alive]
-        ids += [p for p in self.avs if p not in ids and self.avs[p].alive]
+        ids = [p for p in self.order if p in self.avs and self.avs[p].alive and p not in self.jail_ids]
+        ids += [p for p in self.avs if p not in ids and self.avs[p].alive and p not in self.jail_ids]
         if not ids:
             return {}
         lo, hi = lo + SIZE * 0.6, hi - SIZE * 0.6
@@ -814,9 +952,33 @@ class Desk:
         if a and text:
             a.say(text, kind)
 
+    # ---- 💣 폭탄 이벤트 (밖에서 부름)
+    def fx(self, pid, kind, sec=2.5):
+        a = self.avs.get(pid)
+        if a:
+            a.fx, a.fx_until = kind, time.time() + sec
+
+    def drive(self, moves):
+        """(방장) AI 이동 지시: pid → (종류, 대상 pid, 기한)."""
+        for a in self.avs.values():
+            m = moves.get(a.id) if a.sim and a.id != self.me else None
+            t = self.avs.get(m[1]) if m else None
+            a.drive = (m[0], t.x) if (m and t) else None
+
+    def positions(self):
+        return {p: a.x for p, a in self.avs.items() if a.alive}
+
+    def nearest(self, pid, cands, slack=1.3):
+        a = self.avs.get(pid)
+        if not a:
+            return None
+        near = [(abs(self.avs[c].x - a.x), c) for c in cands if c in self.avs and self.avs[c].alive]
+        near = [n for n in near if n[0] <= self.reach * slack]
+        return min(near)[1] if near else None
+
     def walk(self, d, run=False):
         a = self.avs.get(self.me)
-        if a and a.alive:
+        if a and a.alive and a.jail_x is None:
             a.manual, a.run = d, run
             if a.state != "jump":
                 a.state, a.t = "walk", 10 ** 6
@@ -835,8 +997,8 @@ class Desk:
         if a:
             a.jump()
 
-    def banner(self, title, sub="", color=(255, 255, 255, 255), tint="#000814", dim=0.45):
-        self.banners.append(dict(title=title, sub=sub, color=color, tint=tint, dimv=dim))
+    def banner(self, title, sub="", color=(255, 255, 255, 255), tint="#000814", dim=0.45, shake=False):
+        self.banners.append(dict(title=title, sub=sub, color=color, tint=tint, dimv=dim, shake=shake))
 
     def take_pos(self, now):
         """방송할 내 캐릭터(들) 위치 — 움직이면 0.25초, 가만히 있으면 2초마다."""
@@ -885,6 +1047,7 @@ class Desk:
                      center=center)
         for a in avs:
             self.draw(a, now)
+        self.draw_extra(now)
         self.step_banner(now)
         if WIN and now - self.last_top > 1.5 and not self.cur:
             self.last_top = now
@@ -986,6 +1149,79 @@ class Desk:
         top = (self.ground - a.y - dy) * S - (bh if a.alive else px(SIZE)) + px(14)
         v["label"].place(min(max(0, cx - lw / 2), self.WP - lw), top - lh)
 
+    def _xwin(self, key, click=True):
+        w = self.extra.get(key)
+        if w is None:
+            w = self.extra[key] = Win(self.root, cursor="", clickthrough=click)
+            self._refocus_soon()
+        return w
+
+    def _xhide(self, key):
+        w = self.extra.pop(key, None)
+        if w:
+            w.destroy()
+
+    def draw_extra(self, now):
+        S = SC["v"]
+        # 폭탄: 든 사람 머리 위, 불꽃 깜빡임이 점점 빨라짐
+        b = self.bomb
+        a = self.avs.get(b[0]) if b else None
+        if a and a.alive:
+            fz = b[1]
+            period = max(0.07, 0.5 - 0.43 * fz)
+            on = int(now / period) % 2 == 0
+            w = self._xwin("bomb")
+            w.image(("bomb", on), lambda: bomb_img(on))
+            bw, bh = w.size
+            top = (self.ground - a.y - SIZE - 6) * S
+            jig = (math.sin(now * 40) * 1.5 * fz) * S
+            w.place(a.x * S - bw / 2 + jig, top - bh - px(20))
+        else:
+            self._xhide("bomb")
+        # 건넬 수 있는 대상 강조
+        h = self.avs.get(self.hl) if self.hl else None
+        if h and h.alive:
+            w = self._xwin("ring")
+            w.image("ring", ring_img)
+            rw, rh = w.size
+            w.place(h.x * S - rw / 2, self.ground * S - rh / 2 - px(2))
+            w.set_alpha(150 + 100 * abs(math.sin(now * 6)))
+        else:
+            self._xhide("ring")
+        # 감옥 창살
+        jb = getattr(self, "jail_box", None)
+        if jb:
+            w = self._xwin("cage")
+            cw, ch = jb[1] - jb[0], SIZE * 1.2
+            w.image(("cage", round(cw)), lambda: cage_img(cw, ch))
+            w.place(jb[0] * S, (self.ground - ch) * S + px(2))
+            w.raise_top()
+        else:
+            self._xhide("cage")
+        # 룰렛: 모든 PC 가 같은 칸에서 멈춤 (방장이 정한 결과 + 회전 시작 시각)
+        if self.roul:
+            info, t0 = self.roul
+            slots = info["slots"]
+            tot = sum(s_[2] for s_ in slots)
+            if t0 is None:
+                ang, lab = (now * 40) % 360, info.get("label", "룰렛")
+            else:
+                i = info["res"]
+                start = sum(s_[2] for s_ in slots[:i]) / tot * 360
+                mid = start + slots[i][2] / tot * 180
+                final = 360 * 6 - mid                       # 결과 칸이 바늘(위)에 오도록
+                e = min(1.0, (now - t0) / 4.0)
+                ang = final * (1 - (1 - e) ** 3)
+                lab = slots[i][1] if e >= 1 else "두구두구…"
+            w = self._xwin("roul")
+            w.image(("roul", round(ang / 2) * 2, lab), lambda: wheel_img(slots, ang, lab))
+            ww, wh = w.size
+            lo, hi = self.zone[0], self.zone[1]
+            w.place((lo + hi) / 2 * S - ww / 2, (self.ground - SIZE) * S - wh - px(60))
+            w.raise_top()
+        else:
+            self._xhide("roul")
+
     # ------------------------------------------------ 전체 화면 글자
     IN, HOLD, OUT = 0.7, 1.6, 0.8
 
@@ -1019,6 +1255,11 @@ class Desk:
         e = e * e * (3 - 2 * e)                  # 부드럽게
         c["dimw"].set_alpha(e * c["dimv"])
         c["text"].set_alpha(e * 255)
+        if c.get("shake"):                       # 💥 짧은 흔들림
+            tw, th = c["text"].size
+            amp = max(0.0, 1 - t / 0.9) * 18
+            c["text"].place((self.WP - tw) / 2 + random.uniform(-amp, amp),
+                            (self.HP - th) / 2 - self.HP * 0.08 + random.uniform(-amp, amp))
 
 
 def composite(desk, bg=(58, 92, 120), w=None, h=None):

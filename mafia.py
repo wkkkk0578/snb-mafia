@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "2.1"
+VERSION = "2.2"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 APPDIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia")
 SETTINGS = os.path.join(APPDIR, "settings.json")
@@ -168,6 +168,8 @@ class Host:
         self.lobby_chat = []
         self.notices = []
         self.banmal = True                                 # AI 반말 허용
+        self.bomb = True                                   # 💣 폭탄 이벤트
+        self.test = {}                                     # config.json 테스트 플래그
         self.hist = read_json(ROLE_HIST, {})               # id → 최근 직업들
         self.logged = False
 
@@ -217,6 +219,8 @@ class Host:
                     self.members[mid]["rdy"] = on
                     self.last_lobby = 0
         elif t == "bye":
+            if self.game and mid in self.game.players:
+                self.game.bomb_drop(mid)                   # 폭탄 든 채 나가면 가장 가까운 사람에게
             if mid in self.members and not (self.game and mid in self.game.players):
                 self.drop(mid)
         elif t == "act" and self.game:
@@ -242,6 +246,10 @@ class Host:
             g.judge_vote(pid, bool(target))
         elif kind == "say":
             g.say(pid, text)
+        elif kind == "bomb_pass":
+            g.bomb_pass(pid, target)
+        elif kind == "spin":
+            g.spin(pid)
 
     def waiting(self):
         """준비 안 한 사람 (방장 제외)."""
@@ -258,7 +266,8 @@ class Host:
         random.shuffle(mem)
         self.gid = uuid.uuid4().hex[:8]
         self.game = core.Game(mem, now=time.time(), stylist=self.stylist, off=tuple(self.off),
-                              banmal=self.banmal, history={h: self.hist.get(h, []) for h in hs})
+                              banmal=self.banmal, history={h: self.hist.get(h, []) for h in hs},
+                              bomb=self.bomb, test=self.test)
         self.logged = False
         self.sent_ver = -1
         self.last_lobby = 0
@@ -292,7 +301,7 @@ class Host:
                     members=[dict(id=h, nick=self.nick_of(h), ch=self.members[h].get("ch"),
                                  rdy=h == self.me or bool(self.members[h].get("rdy"))) for h in self.humans()],
                     plan=core.plan_text(max(self.total, len(self.humans()), core.MIN_PLAYERS), self.off),
-                    off=sorted(self.off), banmal=self.banmal,
+                    off=sorted(self.off), banmal=self.banmal, bomb=self.bomb,
                     llm=bool(self.stylist))
 
     def tick(self, now):
@@ -311,6 +320,10 @@ class Host:
             self.notices.append("🤖 Claude 연결 OK — AI 가 상황을 보고 말해요." if st == "ok"
                                 else f"🤖 Claude 연결 문제: {st} → 기본 대사로 진행해요. (시작 화면 맨 아래 '🤖 AI 대화'에서 키를 다시 넣어 주세요)")
         if g:
+            b = g.bomb
+            if b and b["holder"] in self.members and b["holder"] != self.me \
+                    and now - self.members[b["holder"]].get("seen", now) > 9:
+                g.bomb_drop(b["holder"])                   # 폭탄 든 사람 연결 끊김
             g.tick(now)
             if g.phase == "end":
                 self.save_game()
@@ -381,6 +394,7 @@ class App:
         self.root.bind("<Configure>", self.on_resize, add="+")
         self._desk_key = None
         self.prev_phase, self.prev_alive = None, {}
+        self._ev_seen, self._roul_t0 = 0, None
         self._stop_job = None
         self._rel = {}
         self.desk.refocus = self.refocus
@@ -390,6 +404,7 @@ class App:
             self.root.bind_all(f"<KeyPress-{k}>", lambda e, d=d: self.key_walk(d, True, e))
             self.root.bind_all(f"<KeyRelease-{k}>", lambda e, d=d: self.key_walk(d, False, e))
         self.root.bind_all("<KeyPress-Up>", lambda e: self.key_jump())
+        self.root.bind_all("<KeyPress-Down>", lambda e: self.key_down())
         self.build_start()
         self.root.after(200, self.loop)
         self.new_build = None
@@ -537,6 +552,8 @@ class App:
         if self.host:
             self.host.off = set(self.st.get("roles_off", [])) & set(core.OPTIONAL)
             self.host.banmal = self.st.get("banmal", True)
+            self.host.bomb = self.st.get("bomb", True)
+            self.host.test = {k[5:]: v for k, v in self.cfg.items() if k.startswith("test_") and v}
         if mode == "solo":
             self.host.total = 8
         self.lobby, self.view, self.gid, self.last_seq = None, None, "", 0
@@ -627,9 +644,12 @@ class App:
             b.bind("<ButtonPress-1>", lambda e, d=d: self.desk.walk(d))
             b.bind("<ButtonRelease-1>", lambda e: self.desk.stop())
             b.pack(side="left", padx=(0, self.px(3)))
-        bj = self.btn(inp, "⤒", lambda: self.desk.jump(), SOFT, small=True)
+        bj = self.btn(inp, "⤒", lambda: self.key_jump(force=True), SOFT, small=True)
         bj.configure(padx=self.px(6))
-        bj.pack(side="left", padx=(0, self.px(6)))
+        bj.pack(side="left", padx=(0, self.px(3)))
+        bp = self.btn(inp, "⬇", lambda: self.bomb_pass_ui(), SOFT, small=True)   # 💣 건네기
+        bp.configure(padx=self.px(6))
+        bp.pack(side="left", padx=(0, self.px(6)))
         self.inp_fr = inp
         self.e_chat = tk.Entry(inp, font=self.f(11), bg=PANEL, fg=TXT, insertbackground=TXT, relief="flat",
                                highlightthickness=1, highlightbackground=LINE, highlightcolor=ACCENT)
@@ -806,6 +826,8 @@ class App:
             return False, "👀 관전 중에는 채팅할 수 없어요"
         if v["phase"] == "end":
             return True, "💬 전체 채팅"
+        if me.get("jailed"):
+            return False, "🔒 감옥에 있어요 — 내일 아침 석방 (읽기만 할 수 있어요)"
         if not me["alive"]:
             return True, "👻 유령 채팅 — 죽은 사람끼리만 보여요"
         if v["phase"] == "night" and me.get("medium"):
@@ -964,6 +986,7 @@ class App:
             self.txt.delete("1.0", "end")
             self.txt.configure(state="disabled")
             self.prev_phase, self.prev_alive = v.get("phase"), {p["id"]: p["a"] for p in v["players"]}
+            self._ev_seen = max([e["id"] for e in v.get("ev", [])] + [0])   # 새 판: 지난 연출은 건너뜀
         first = self.last_seq == 0
         self.view, self.view_at = v, now
         for c in v.get("chat", []):
@@ -1248,6 +1271,12 @@ class App:
                     tag = "🎤 변론"
                 if p.get("turn"):
                     tag = "🙋 소개"
+                if p.get("jail"):
+                    tag = "감옥"
+                elif p.get("bomb"):
+                    tag = "폭탄"
+                elif p.get("pen") and not tag:
+                    tag = p["pen"]
                 rows.append(dict(id=p["id"], n=p["n"], ch=p.get("ch"), ai=p["ai"], alive=p["a"],
                                  sub=tag or "", mafia=(role in core.MAFIA_TEAM) or tag == "마피아"))
                 if self.host and p["ai"]:
@@ -1275,6 +1304,7 @@ class App:
             elif ph == "night":
                 mode = "night"
         self.desk.set_mode(mode, focus, [p["id"] for p in v["players"]] if v else [r_["id"] for r_ in rows])
+        self.sync_bomb(v)
         key = json.dumps([rows, sorted(sims)], sort_keys=True)
         if key != self._desk_key:
             self._desk_key = key
@@ -1286,6 +1316,48 @@ class App:
             return (self.root.winfo_rootx() + self.root.winfo_width() / 2) / deskmod.SC["v"]
         except Exception:
             return self.desk.W / 2
+
+    def sync_bomb(self, v):
+        """💣 폭탄·감옥·룰렛을 바탕화면에. (방장은 AI 를 움직이고 위치를 엔진에 알려 줌)"""
+        d = self.desk
+        b = (v or {}).get("bomb")
+        d.bomb = (b["holder"], b.get("fz", 0)) if b else None
+        d.jail_ids = {p["id"] for p in (v or {}).get("players", []) if p.get("jail")}
+        me = (v or {}).get("me") or {}
+        d.hl = d.nearest(self.me, me.get("btg") or []) if me.get("holder") else None
+        r_ = (v or {}).get("roul")
+        if r_:
+            key = (r_["who"], r_.get("res"))
+            if r_.get("el") is not None and getattr(self, "_roul_key", None) != key:
+                self._roul_key, self._roul_t0 = key, time.time() - r_["el"]
+            who = next((p["n"] for p in v["players"] if p["id"] == r_["who"]), "")
+            info = dict(r_, label=f"룰렛 — {who}" + (" (↑ 로 돌리기!)" if r_["who"] == self.me else ""))
+            d.roul = (info, self._roul_t0 if r_.get("el") is not None else None)
+        else:
+            d.roul = None
+        g = self.host.game if self.host else None
+        if g:
+            g.update_pos(d.positions(), d.reach)
+            d.drive(g.ai_moves)
+        for e in (v or {}).get("ev", []):
+            if e["id"] <= self._ev_seen:
+                continue
+            self._ev_seen = e["id"]
+            name = next((p["n"] for p in v["players"] if p["id"] == e.get("who")), "")
+            k = e["k"]
+            if k == "arrive":
+                d.banner("폭탄 도착!", f"{name}님이 폭탄을 들었어요", color=(255, 170, 60, 255), tint="#1a0d00", dim=0.35)
+                d.fx(e["who"], "surprise", 2.5)
+            elif k == "pass":
+                d.fx(e["who"], "surprise", 1.8)
+                d.fx(e.get("frm"), "jump", 1.2)
+            elif k == "boom":
+                d.banner("펑!", f"{name}님", color=(255, 90, 60, 255), tint="#200000", dim=0.4, shake=True)
+                d.fx(e["who"], "flat", 4)
+            elif k == "rres":
+                d.fx(e["who"], "dance" if e.get("res") == "pass" else "flat", 3.5)
+            elif k == "free":
+                d.fx(e["who"], "jump", 2)
 
     def phase_effects(self, v):
         ph = v.get("phase")
@@ -1357,10 +1429,30 @@ class App:
         self._stop_job = None
         self.desk.stop()
 
-    def key_jump(self):
-        if self.net and self.can_move_key():
+    def key_jump(self, force=False):
+        me = ((self.view or {}).get("me") or {})
+        if me.get("spin") and (force or self.can_move_key()):
+            self.do_act("spin")                            # 🎰 내 룰렛 돌리기
+            return "break"
+        if self.net and (force or self.can_move_key()):
             self.desk.jump()
             return "break"
+
+    def key_down(self):
+        if self.net and self.can_move_key() and ((self.view or {}).get("me") or {}).get("holder"):
+            self.bomb_pass_ui()
+            return "break"
+
+    def bomb_pass_ui(self):
+        """💣 건네기: 가까이 있는 사람(테두리 강조)에게. 판정은 방장이 최신 위치로."""
+        me = ((self.view or {}).get("me") or {})
+        if not me.get("holder"):
+            return
+        t = self.desk.nearest(self.me, me.get("btg") or [])
+        if t is None:
+            self.add_line("priv", "💣 더 가까이 가야 건넬 수 있어요 (← → 로 다가가기)")
+            return
+        self.do_act("bomb_pass", t)
 
     def refocus(self):
         """투명 창(캐릭터·Night Time 등)이 새로 생기며 가져간 키보드 포커스를 채팅창으로 돌려준다."""
@@ -1419,15 +1511,17 @@ class App:
             if self.host:
                 total = self.host.total
                 hs = len(self.host.humans())
-                hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원과 직업(📋 직업판)을 정하세요"
+                hint = (f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  "
+                        f"AI 반말 {'허용' if self.host.banmal else '안 함'} · 💣 폭탄 이벤트 {'켜짐' if self.host.bomb else '꺼짐'}")
                 wait = self.host.waiting()
                 if wait:
                     names = ", ".join(self.host.nick_of(w) for w in wait[:3]) + (" 외" if len(wait) > 3 else "")
                     hint = f"⏳ 준비 기다리는 중: {names}  ·  모두 준비하면 시작할 수 있어요"
-                start = (f"준비 {hs - 1 - len(wait)}/{hs - 1}", None, None) if wait else ("게임 시작 ▶", self.host_start, ACCENT)
+                start = (f"준비 {hs - 1 - len(wait)}/{hs - 1}", None, None) if wait else ("시작 ▶", self.host_start, ACCENT)
                 btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
-                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT),
-                        ("AI 반말 " + ("ON" if self.host.banmal else "OFF"), self.toggle_banmal, SOFT), start]
+                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업", self.open_board, SOFT),
+                        ("반말 " + ("ON" if self.host.banmal else "OFF"), self.toggle_banmal, SOFT),
+                        ("💣 " + ("ON" if self.host.bomb else "OFF"), self.toggle_bomb, SOFT), start]
             else:
                 if self.my_ready:
                     hint = "✅ 준비 완료! 방장이 시작하길 기다려요"
@@ -1452,6 +1546,17 @@ class App:
             btns = [("토론 끝", lambda: self.do_act("ready"), SOFT)] if not me.get("ready") else []
             if me.get("ext"):
                 btns += [("⏱ +20초", lambda: self.do_act("extend", "+"), SOFT)]
+        elif ph == "day" and me.get("jailed"):
+            hint = "🔒 감옥에 있어요. 내일 아침에 풀려나요 (채팅은 읽기만)"
+        elif ph == "day" and me.get("spin"):
+            hint = "🎰 룰렛을 돌리세요! (↑ 키 또는 버튼 · 5초 뒤 자동)"
+            btns = [("🎰 돌리기", lambda: self.do_act("spin"), ACCENT)]
+        elif ph == "day" and me.get("holder"):
+            hint = "💣 폭탄을 들고 있어요! ← → 로 다가가서 ↓ (또는 ⬇ 버튼) 로 건네세요"
+            btns = [("⬇ 건네기", self.bomb_pass_ui, ACCENT)]
+        elif ph == "day" and v.get("bomb"):
+            hint = "💣 폭탄이 돌고 있어요! 들고 있는 사람에게서 도망치세요 (← → · Shift 달리기 · ↑ 점프)"
+            btns = [("토론 끝 (💣 중)", None, None)]
         elif ph == "day":
             if me.get("alive"):
                 if me.get("ready"):
@@ -1462,6 +1567,8 @@ class App:
                 if me.get("ext"):                     # 하루 한 번: 시간 늘리기 / 줄이기
                     btns += [("⏱ +20초", lambda: self.do_act("extend", "+"), SOFT),
                              ("⏩ −20초", lambda: self.do_act("extend", "-"), SOFT)]
+        elif ph == "vote" and me.get("alive") and not me.get("targets") and (me.get("jailed") or me.get("novote")):
+            hint = "🔒 감옥에 있어서 투표할 수 없어요" if me.get("jailed") else "🗳 오늘은 투표권이 없어요 (폭탄 패널티)"
         elif ph == "vote":
             if me.get("alive"):
                 hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if getattr(self, "size_mode", "big") in ("nolist", "chat") else "🗳 처형할 사람을 클릭하세요") \
@@ -1615,6 +1722,16 @@ class App:
         self._act_key = None
 
     # ------------------------------------------------ 방장 조작
+    def toggle_bomb(self):
+        h = self.host
+        if not h or h.game:
+            return
+        h.bomb = not h.bomb
+        self.st["bomb"] = h.bomb
+        write_json(SETTINGS, self.st)
+        h.last_lobby = 0
+        self._act_key = None
+
     def toggle_banmal(self):
         h = self.host
         if not h or h.game:

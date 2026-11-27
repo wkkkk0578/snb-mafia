@@ -1,11 +1,11 @@
 {
- "version": 19,
- "note": "개선 제안 v3 반영: 끼어들기·이름 인식·직업 설명·최후 변론, 말·투표 일치(속마음 기록), 밤 능력 판단, 감독, 닉네임, 가벼운 욕",
+ "version": 20,
+ "note": "💣 폭탄 이벤트 + 랜덤 패널티 + 룰렛 + 감옥",
  "files": {
-  "mafia.py": "130388b7caf448e9d8c32ec09f62468a3fe5801c6dbe47ed0ab61fde72cafb58",
-  "mafia_core.py": "ce3398500c671569ccf2ca2e59ceac78f657e2a55bf102c4cff64130ca4ec6a1",
-  "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
+  "mafia.py": "cc542829c73bcd06c358f5a9f905e14d1408fd7d92f68943d088516895ad7b5e",
+  "mafia_core.py": "cc07ceb6c9f6417530daa5b5702ea3b70e755194dae81be0a49a89a4052051c1",
+  "desk.py": "c42ace5bf3ed75980ae87c3e311392ec533088d12ba3773f19bf15b06eb24be9",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "e7176cd592311681406df92cd9c14bff6d2a2d3c54488bbed8b19fa2b7515583"
+  "안내.txt": "d27b271fc182926172193357b35442631367cb4e917638c01c500869313b8b99"
  }
 }

@@ -648,6 +648,85 @@ TEMPER_INTENTS = tuple(INTENT_DESC_k for INTENT_DESC_k in INTENT_DESC if INTENT_
 def heated(intent):
     return intent.startswith("tp_") and intent.endswith("3")
 
+# ---------------------------------------------------------------- 💣 폭탄 이벤트
+PENALTY_W = (("jail", 25), ("novote", 30), ("noability", 25), ("roulette", 20))
+ROULETTE = (("pass", "✅ 통과", 40), ("novote", "🗳 투표권 없음", 20), ("noability", "🚫 능력 사용 불가", 20),
+            ("jail", "🔒 감옥", 12), ("lost", "💀 능력 소멸", 8))
+PEN_SHORT = {"jail": "감옥", "novote": "투표X", "noability": "능력X", "roulette": "룰렛", "lost": "소멸", "pass": "통과"}
+PEN_LABEL = {"jail": "🔒 감옥행 (내일 아침 석방)", "novote": "🗳 오늘 투표권 없음", "noability": "🚫 오늘 밤 능력 사용 불가",
+             "roulette": "🎰 룰렛!", "lost": "💀 능력 소멸 (게임 끝까지)", "pass": "✅ 통과"}
+# 폭탄이 가까이 오면: flee 도망 / stay 버팀 / approach 일부러 다가감
+BOMB_MOVE = {"지훈": "stay", "서연": "stay", "민재": "flee", "수빈": "flee", "현우": "stay", "지은": "flee",
+             "도윤": "stay", "하린": "approach", "태호": "approach", "유나": "flee"}
+
+BOMB_J = {   # 존댓말 기본 (캐릭터 대사가 없을 때)
+    "ev_got": ["아 왜 저예요!!", "잠깐잠깐", "헉 폭탄이다"],
+    "ev_passed": ["잘 받으세요~", "휴 살았다", "ㅋㅋ 이제 제 거 아니에요"],
+    "ev_flee": ["오지 마세요!!", "저 말고요!!", "으악 저리 가요"],
+    "ev_jail": ["아니 감옥이라뇨!", "이건 너무하잖아요", "억울해요 진짜"],
+    "ev_novote": ["투표도 못 하네요..", "아 투표권이..", "에이 하필"],
+    "ev_noability": ["아 짜증나네요", "하필 오늘..", "에이 참"],
+    "ev_roulette": ["제발 통과..", "아 떨려요", "제발제발"],
+    "ev_rpass": ["살았다!!", "예스!!", "휴 통과!"],
+    "ev_rlost": ["망했다..", "아 이건 진짜 아니다", "끝났네요.."],
+    "ev_rother": ["하..", "에휴", "그래도 이 정도면.."],
+    "ev_see_laugh": ["ㅋㅋㅋㅋ", "아 웃겨 ㅋㅋ", "펑 ㅋㅋㅋ"],
+    "ev_see_comfort": ["{x}님 괜찮아요?", "아이고 {x}님..", "{x}님 힘내요"],
+    "ev_see_tease": ["그럴 줄 알았어요 ㅋㅋ", "{x}님 운 없네요 ㅋㅋ", "역시 {x}님"],
+}
+BOMB_B = {
+    "ev_got": ["아 왜 나야!!", "잠깐잠깐", "헉 폭탄이다"],
+    "ev_passed": ["잘 받아~", "휴 살았다", "ㅋㅋ 이제 내 거 아님"],
+    "ev_flee": ["오지 마!!", "나 말고!!", "으악 저리 가"],
+    "ev_jail": ["아니 감옥이라니!", "이건 너무하잖아", "억울해 진짜"],
+    "ev_novote": ["투표도 못 하네..", "아 투표권이..", "에이 하필"],
+    "ev_noability": ["아 짜증나", "하필 오늘..", "에이 참"],
+    "ev_roulette": ["제발 통과..", "아 떨려", "제발제발"],
+    "ev_rpass": ["살았다!!", "예스!!", "휴 통과!"],
+    "ev_rlost": ["망했다..", "아 이건 진짜 아니다", "끝났네.."],
+    "ev_rother": ["하..", "에휴", "그래도 이 정도면.."],
+    "ev_see_laugh": ["ㅋㅋㅋㅋ", "아 웃겨 ㅋㅋ", "펑 ㅋㅋㅋ"],
+    "ev_see_comfort": ["{x} 괜찮아?", "아이고 {x}..", "{x} 힘내"],
+    "ev_see_tease": ["그럴 줄 알았다 ㅋㅋ", "{x} 운 없네 ㅋㅋ", "역시 {x}"],
+}
+# 캐릭터별 (자기 말투로) — 성격이 묻어나게
+BOMB_P = {
+    "지훈": {"ev_got": ["아 뭐예요 이거", "왜 저한테 와요", "바로 넘깁니다"], "ev_passed": ["가져가세요", "끝", "넘겼어요"],
+            "ev_jail": ["말도 안 돼요", "아니 감옥은 좀..", "어이없네요"], "ev_noability": ["짜증나네요", "하..", "에이"],
+            "ev_rpass": ["됐다", "통과요", "오케이"], "ev_rlost": ["하 진짜..", "최악이네요", "망했네"]},
+    "서연": {"ev_got": ["어머 저요?", "침착하게.. 넘길게요", "어디로 넘기죠"], "ev_passed": ["죄송해요 ㅎㅎ", "휴..", "부탁드려요~"],
+            "ev_jail": ["이건 좀 억울하네요", "감옥이라니..", "하필 지금"], "ev_novote": ["투표 못 하는 건 아쉽네요", "아쉽네요..", "오늘은 지켜볼게요"],
+            "ev_rpass": ["다행이다", "휴 살았네요", "통과했어요!"], "ev_rlost": ["아.. 이건 아니죠", "어떡해요", "속상하네요"]},
+    "민재": {"ev_got": ["아 씨 왜 나야 ㅋㅋ", "으악 폭탄 ㅋㅋㅋ", "잠깐만 잠깐만"], "ev_passed": ["잘 받아~ ㅋㅋ", "ㅋㅋㅋ 바이바이", "선물이야~"],
+            "ev_flee": ["ㅋㅋ 오지 마!!", "도망간다~", "못 잡지롱"], "ev_jail": ["아 감옥 ㅋㅋㅋ 실화냐", "억울하다 진짜 ㅋㅋ", "나 무죄야!!"],
+            "ev_rpass": ["ㅋㅋㅋ 살았다!!", "예스!!!", "럭키 ㅋㅋ"], "ev_rlost": ["아 망했다 ㅋㅋ..", "이게 되네..", "ㅋㅋ 끝났다"]},
+    "수빈": {"ev_got": ["어.. 어떡해요ㅠ", "저요?ㅠㅠ", "무서워요"], "ev_passed": ["죄송해요ㅠ", "휴..", "미안해요.."],
+            "ev_flee": ["오지 마세요ㅠ", "저 말고요ㅠㅠ", "으.."], "ev_jail": ["흑.. 감옥이요?", "너무해요ㅠ", "저 아무것도 안 했는데.."],
+            "ev_rpass": ["다행이다ㅠ", "휴..", "살았어요ㅠ"], "ev_rlost": ["ㅠㅠㅠ", "어떡해..", "망했어요ㅠ"]},
+    "현우": {"ev_got": ["자 침착하게", "아 제가 받았네요", "누구한테 줄까"], "ev_passed": ["부탁해요", "넘깁니다~", "잘 받으셨죠?"],
+            "ev_jail": ["감옥이면 할 수 없죠..", "아 정리해야 하는데", "하필.."], "ev_novote": ["투표 못 하는 건 아쉽네요", "다들 잘 판단해 주세요", "아쉽네요"],
+            "ev_rpass": ["다행이네요", "통과!", "휴"], "ev_rlost": ["아.. 이건 크네요", "하..", "어쩔 수 없죠"]},
+    "지은": {"ev_got": ["꺄 왜 저예요ㅠㅠ", "헐 폭탄!!", "어떡해어떡해"], "ev_passed": ["미안해요~ㅎㅎ", "휴 살았다", "잘 받아요~"],
+            "ev_flee": ["꺄 오지 마요!!", "저 말고요ㅠ", "도망!!"], "ev_jail": ["헐 감옥이요?ㅠㅠ", "너무해요ㅠ", "억울해ㅠㅠ"],
+            "ev_rpass": ["꺄 살았다!!", "대박 통과!!", "다행이다ㅠㅠ"], "ev_rlost": ["헐ㅠㅠ 어떡해", "망했어요ㅠ", "이건 너무해ㅠ"]},
+    "도윤": {"ev_got": ["...", "음", "넘깁니다"], "ev_passed": ["...", "끝", "받으세요"], "ev_jail": ["...알겠습니다", "흠", "그렇군요"],
+            "ev_rpass": ["다행", "음", "통과"], "ev_rlost": ["...", "흠", "아쉽네요"]},
+    "하린": {"ev_got": ["흥 누구 줄까", "아 씨 나야?", "딱 의심 가는 사람 있지"], "ev_passed": ["잘 받아 ㅋㅋ", "의심 가는 사람한테 줬어", "가져가~"],
+            "ev_jail": ["이거 누가 꾸몄지?", "억울해 진짜", "나 가두면 손해야"], "ev_noability": ["아 빡치네", "하필", "에이"],
+            "ev_rpass": ["역시 나야", "통과 ㅋㅋ", "봤지?"], "ev_rlost": ["아 진짜..", "말도 안 돼", "젠장"]},
+    "태호": {"ev_got": ["아이고 나한테 왔네 ㅋㅋ", "하하 이거 뜨겁다", "자 누가 받을래~"], "ev_passed": ["선물이야~ ㅋㅋ", "잘 받아라~", "하하 살았다"],
+            "ev_jail": ["아이고 감옥이라니 ㅋㅋ", "나 금방 나온다~", "억울하네 ㅋㅋ"], "ev_novote": ["투표는 너희가 해 ㅋㅋ", "아이고", "하하 쉬어야겠다"],
+            "ev_rpass": ["하하 살았다!!", "운 좋네 ㅋㅋ", "오예~"], "ev_rlost": ["아이고 망했네 ㅋㅋ", "이건 좀 아프다", "하하.. 하"]},
+    "유나": {"ev_got": ["헉 나?? 어떡해", "으아아", "누구 줘야 돼?"], "ev_passed": ["미안~ㅎㅎ", "휴 살았다", "잘 받아ㅎㅎ"],
+            "ev_flee": ["오지 마ㅠ", "나 말고!!", "도망!!"], "ev_jail": ["헐 감옥?ㅠ", "나 신입인데ㅠ", "너무해ㅠㅠ"],
+            "ev_rpass": ["살았다ㅠㅠ", "대박 통과!", "럭키ㅎㅎ"], "ev_rlost": ["망했다ㅠ", "헐..", "어떡해ㅠㅠ"]},
+}
+GENERIC.update(BOMB_J)
+GENERIC_B.update(BOMB_B)
+for _k in BOMB_J:
+    INTENT_DESC.setdefault(_k, "💣 폭탄 이벤트 — {q}. 성격대로 아주 짧게 한마디 (공개된 정보만, 직업 티 내지 말 것)")
+
+
 
 PHASE_KO = {"intro": "직업 확인", "selfintro": "자기소개", "night": "밤", "morning": "아침", "day": "낮 토론", "vote": "투표",
             "defense": "최후 변론", "judge": "찬반 투표", "verdict": "결과 발표", "end": "게임 끝"}
@@ -864,7 +943,7 @@ class Game:
     """방장 PC에서 도는 한 판. tick(now) 를 주기적으로 부르면 시간에 따라 진행된다."""
 
     def __init__(self, members, now=0.0, rng=None, times=None, reveal_on_death=True, stylist=None, off=(),
-                 banmal=True, history=None):
+                 banmal=True, history=None, bomb=True, test=None):
         """members: [{"id","name","ai":bool,"persona":이름 or None}]"""
         self.rng = rng or random.Random()
         self.times = dict(TIMES, **(times or {}))
@@ -878,6 +957,20 @@ class Game:
         self.order = [m["id"] for m in members]
         self.off = tuple(off)
         self.banmal = banmal                 # AI 반말 허용 (방장이 끌 수 있음)
+        self.bomb_on = bomb                  # 💣 폭탄 이벤트 (꺼지면 감옥·패널티도 없음)
+        self.test = test or {}               # 테스트 플래그: bomb_force / penalty / roulette
+        self.bomb = None                     # 진행 중인 폭탄
+        self.bomb_n = 0                      # 이번 판 폭탄 수 (최대 2)
+        self.jailed = {}                     # pid → 갇힌 날
+        self.no_vote = set()                 # (pid, day)
+        self.no_ability = set()              # (pid, day) — 그날 밤
+        self.lost = set()                    # 능력 소멸
+        self.last_pen = {}                   # pid → 지난 패널티 (감옥 연속 방지)
+        self.roulette = None
+        self.ev, self.ev_seq = [], 0         # 화면 연출용 이벤트 (도착·건넴·펑·룰렛·석방)
+        self.pos, self.reach = {}, 70.0      # 캐릭터 위치 (방장 화면 px) · 건넬 수 있는 거리
+        self.ai_moves = {}                   # AI 이동 지시: pid → (종류, 대상, 기한)
+        self.pen_today = {}                  # pid → 오늘 받은 패널티 표시 (이름표용)
         for pid, r in assign_roles(self.order, role_plan(len(members), self.off),
                                    {m["id"] for m in members if not m.get("ai")}, history or {}, self.rng).items():
             self.players[pid].role = r
@@ -985,7 +1078,7 @@ class Game:
                 to = rest[0] if rest else None
             except queue.Empty:
                 break
-            prio = 0 if intent in DIRECT else 1
+            prio = 0 if (intent in DIRECT or intent.startswith("ev_")) else 1   # 폭탄 반응은 꼭 나오게
             at = now
             for i, part in enumerate(text.split("\n")):            # 긴 해명은 두 마디로 나눠 보냄
                 at += min(2.0, 0.4 + len(part) * 0.04) if prio == 0 else min(3.0, 0.6 + len(part) * 0.06)  # 타자 시간
@@ -1007,6 +1100,7 @@ class Game:
                 self.end_lines.remove(x)
                 self.post("say", x[2], x[1], "all")
             return
+        self._bomb_tick(now)
         self._pump_ai(now)
         self._dead_air(now)
         self._open_questions(now)
@@ -1086,6 +1180,247 @@ class Game:
         if best:
             best.respond(who, text)
 
+    # ================================================ 💣 폭탄 이벤트
+    def _event(self, kind, **kw):
+        self.ev_seq += 1
+        self.ev.append(dict(id=self.ev_seq, k=kind, **kw))
+        del self.ev[:-12]
+        self.version += 1
+
+    def _bomb_plan(self, now):
+        """낮이 시작될 때: 둘째 날부터, 5인 이상, 하루 40%, 판당 최대 2번."""
+        if not self.bomb_on or self.bomb_n >= 2:
+            return
+        force = self.test.get("bomb_force")
+        if not force and (self.day < 2 or len(self.order) < 5 or self.rng.random() >= .4):
+            return
+        at = self.rng.uniform(6, 14) if force else self.rng.uniform(10, 35)
+        self.schedule(at, self._bomb_arrive)
+
+    def _bomb_arrive(self):
+        if self.phase != "day" or self.bomb or self.roulette:
+            return
+        left = self.deadline - self.now - 5
+        fuse = min(self.rng.uniform(20, 45), left)
+        if fuse < 12:
+            return
+        cands = [p.id for p in self.alive_list() if p.id not in self.jailed]
+        if len(cands) < 3:
+            return
+        holder = self.rng.choice(cands)
+        self.bomb_n += 1
+        self.bomb = dict(holder=holder, giver=None, t0=self.now, end=self.now + fuse, got=self.now, n=0)
+        self.version += 1
+        self._event("arrive", who=holder)
+        self.sys(f"💣 폭탄 도착! {self.name(holder)}님이 폭탄을 들었어요. 터지기 전에 다른 사람에게 건네세요! "
+                 "(← → 로 다가가서 ↓ 로 건네기)")
+        self._bomb_got(holder, None)
+
+    def _bomb_got(self, pid, giver):
+        b = self.brains.get(pid)
+        if b:
+            b.on_bomb_got(giver)
+        if giver and giver in self.brains:
+            gb = self.brains[giver]
+            self.schedule(self.rng.uniform(.6, 1.4), lambda: self.ai_line(giver, "ev_passed", x=pid, wait=1.5,
+                                                                            q=f"방금 {self.name(pid)}에게 폭탄을 넘김"))
+            self.ai_moves.pop(giver, None)
+
+    def bomb_view(self, now):
+        b = self.bomb
+        if not b:
+            return None
+        prog = (now - b["t0"]) / max(1, b["end"] - b["t0"])      # 남은 시간 숫자는 안 보냄 — 불꽃 속도만
+        return dict(holder=b["holder"], giver=b["giver"], fz=round(min(1, max(0, prog)), 2),
+                    cool=round(max(0, b["got"] + 1.5 - now), 1))
+
+    def update_pos(self, pos, reach=None):
+        """방장 화면의 캐릭터 위치(px) — 건넬 수 있는 거리 판정에 씀."""
+        self.pos = dict(pos)
+        if reach:
+            self.reach = reach
+
+    def dist(self, a, b):
+        if a not in self.pos or b not in self.pos:
+            return 9e9
+        return abs(self.pos[a] - self.pos[b])
+
+    def bomb_targets(self, pid):
+        b = self.bomb
+        if not b or b["holder"] != pid:
+            return []
+        return [p.id for p in self.alive_list() if p.id != pid and p.id not in self.jailed and p.id != b["giver"]]
+
+    def bomb_pass(self, pid, target=None, slack=1.35):
+        """건네기: 방장이 최신 위치로 거리 확인. target 이 없으면 가장 가까운 사람."""
+        b = self.bomb
+        if self.phase != "day" or not b or b["holder"] != pid:
+            return False
+        if self.now - b["got"] < 1.5:
+            return False                                         # 받은 직후 1.5초는 못 넘김
+        cands = self.bomb_targets(pid)
+        if target is None or target not in cands:
+            near = sorted(cands, key=lambda c: self.dist(pid, c))
+            target = near[0] if near else None
+        if target is None or self.dist(pid, target) > self.reach * slack:
+            return False
+        b.update(holder=target, giver=pid, got=self.now, n=b["n"] + 1)
+        self.version += 1
+        self._event("pass", who=target, frm=pid)
+        self.sys(f"💣 {self.name(pid)} → {self.name(target)}")
+        self.ai_moves.pop(pid, None)
+        self._bomb_got(target, pid)
+        return True
+
+    def bomb_drop(self, pid):
+        """폭탄 든 사람 접속 끊김 → 가장 가까운 사람에게 자동으로."""
+        b = self.bomb
+        if b and b["holder"] == pid:
+            cands = [p.id for p in self.alive_list() if p.id != pid and p.id not in self.jailed]
+            if cands:
+                t = min(cands, key=lambda c: self.dist(pid, c))
+                b.update(holder=t, giver=None, got=self.now, n=b["n"] + 1)
+                self._event("pass", who=t, frm=pid)
+                self.sys(f"💣 {self.name(pid)}님 연결이 끊겨 {self.name(t)}님에게 폭탄이 넘어갔어요.")
+                self._bomb_got(t, None)
+
+    def _bomb_tick(self, now):
+        b = self.bomb
+        if b:
+            if self.phase != "day" or not self.players[b["holder"]].alive:
+                self.bomb = None
+                self.ai_moves.clear()
+            elif now >= b["end"]:
+                self._explode(b["holder"])
+            else:
+                h = b["holder"]
+                hb = self.brains.get(h)
+                if hb:
+                    hb.bomb_step(now)
+                for o in self._live_brains():                    # 폭탄이 다가오면 성격대로
+                    if o.id != h:
+                        o.bomb_near(h, now)
+        r_ = self.roulette
+        if r_:
+            if r_["t0"] is None and now >= r_["auto"]:
+                self.spin(r_["who"])
+            elif r_["t0"] is not None and now >= r_["t0"] + 4.4:
+                self.roulette = None
+                self._apply_pen(r_["who"], r_["res"], from_roulette=True)
+
+    def _explode(self, pid):
+        self.bomb = None
+        self.ai_moves.clear()
+        self.version += 1
+        kind = self.test.get("penalty") or self.rng.choices([k for k, _ in PENALTY_W], [w for _, w in PENALTY_W])[0]
+        if kind == "jail" and self.last_pen.get(pid) == "jail":
+            kind = "novote"                                      # 연속 감옥은 투표권 없음으로
+        self._event("boom", who=pid, pen=kind)
+        self.sys(f"💥 펑! 폭탄이 {self.name(pid)}님에게서 터졌어요!")
+        if kind == "roulette":
+            self.sys(f"{self.name(pid)} — 🎰 룰렛!")
+            self.pen_today[pid] = PEN_SHORT["roulette"]
+            res = self.test.get("roulette") or self.rng.choices([k for k, _, _ in ROULETTE], [w for _, _, w in ROULETTE])[0]
+            if res == "jail" and self.last_pen.get(pid) == "jail":
+                res = "novote"
+            human = not self.players[pid].ai
+            self.roulette = dict(who=pid, res=res, t0=None, auto=self.now + (5 if human else self.rng.uniform(1.2, 2.2)))
+            self.version += 1
+            b = self.brains.get(pid)
+            if b:
+                self.ai_line(pid, "ev_roulette", wait=1.5, q="폭탄이 터져서 룰렛을 돌려야 함")
+        else:
+            self._apply_pen(pid, kind)
+        self._bomb_react(pid, kind)
+
+    def spin(self, pid):
+        r_ = self.roulette
+        if not r_ or r_["who"] != pid or r_["t0"] is not None:
+            return False
+        r_["t0"] = self.now
+        self.version += 1
+        self._event("spin", who=pid, res=r_["res"])
+        return True
+
+    def roul_view(self, now):
+        r_ = self.roulette
+        if not r_:
+            return None
+        idx = [k for k, _, _ in ROULETTE].index(r_["res"])
+        return dict(who=r_["who"], slots=[[k, lab.split(" ", 1)[-1], w, PEN_SHORT[k]] for k, lab, w in ROULETTE],
+                    res=idx if r_["t0"] is not None else None,
+                    el=round(now - r_["t0"], 2) if r_["t0"] is not None else None,
+                    wait=round(max(0, r_["auto"] - now), 1) if r_["t0"] is None else 0)
+
+    def _apply_pen(self, pid, kind, from_roulette=False):
+        p = self.players[pid]
+        if not p.alive:
+            return
+        self.last_pen[pid] = kind
+        if from_roulette:
+            self._event("rres", who=pid, res=kind)
+        if kind == "pass":
+            self.sys(f"{p.name} — ✅ 통과!")
+            self.pen_today[pid] = PEN_SHORT["pass"]
+        else:
+            self.sys(f"{p.name} — {PEN_LABEL[kind]}")             # 직업과 상관없이 같은 문구
+            self.pen_today[pid] = PEN_SHORT[kind]
+        if kind == "jail":
+            if pid in self.brains:                               # 갇히기 직전 한마디 (그 뒤론 대사 생성 안 함)
+                self.post("say", self.pick_text(pid, "ev_jail", dict(x="", d="", y="", z="", t="", r="", v="")), pid, "all")
+            self.jailed[pid] = self.day
+            self.ready.discard(pid)
+            self.votes.pop(pid, None)
+            self.ai_moves.pop(pid, None)
+            self._event("jail", who=pid)
+        elif kind == "novote":
+            self.no_vote.add((pid, self.day))
+        elif kind == "noability":
+            self.no_ability.add((pid, self.day))
+        elif kind == "lost":
+            if p.role == "마피아":
+                self.no_ability.add((pid, self.day))             # 마피아는 제거 능력을 잃지 않음 (오늘 밤만 봉인)
+            else:
+                self.lost.add(pid)
+                self.shield.discard(pid)
+        self.version += 1
+        if from_roulette:
+            self._roulette_react(pid, kind)
+
+    def _bomb_react(self, pid, kind):
+        """당사자 반응 + 구경꾼 1~2명 (웃음·위로·놀림)."""
+        if kind not in ("roulette", "jail") and pid in self.brains:
+            it = {"novote": "ev_novote", "noability": "ev_noability"}[kind]
+            self.schedule(self.rng.uniform(.8, 1.6), lambda: self.ai_line(pid, it, wait=1.5,
+                                                                            q=f"폭탄이 터져 '{PEN_LABEL[kind]}' 패널티를 받음"))
+        self._see_react(pid, f"{self.name(pid)}에게서 폭탄이 터짐 ({PEN_LABEL[kind]})")
+
+    def _roulette_react(self, pid, kind):
+        if pid in self.brains:
+            it = "ev_rpass" if kind == "pass" else ("ev_rlost" if kind == "lost" else "ev_rother")
+            self.schedule(self.rng.uniform(.5, 1.2), lambda: self.ai_line(pid, it, wait=1.5,
+                                                                            q=f"룰렛 결과 '{PEN_LABEL[kind]}'"))
+        self._see_react(pid, f"{self.name(pid)}의 룰렛 결과: {PEN_LABEL[kind]}", n=1)
+
+    def _see_react(self, pid, what, n=None):
+        bs = [b for b in self._live_brains() if b.id != pid and b.id not in self.jailed]
+        self.rng.shuffle(bs)
+        n = n if n is not None else self.rng.choice([1, 2])
+        for i, b in enumerate(bs[:n]):
+            side = b.temper.get("side", "none")
+            it = {"fuel": "ev_see_laugh", "defend": "ev_see_comfort", "mediate": "ev_see_comfort"}.get(
+                side, self.rng.choice(["ev_see_laugh", "ev_see_tease", "ev_see_comfort"]))
+            self.schedule(2.2 + i * 1.8 + self.rng.uniform(0, 1),
+                          lambda b=b, it=it: self.ai_line(b.id, it, x=pid, wait=1.5, q=what))
+
+    def _release_jail(self):
+        for pid in list(self.jailed):
+            del self.jailed[pid]
+            if self.players[pid].alive:
+                self.sys(f"🔓 {self.name(pid)}님이 감옥에서 풀려났어요.")
+                self._event("free", who=pid)
+        self.pen_today = {}
+
     def pester_ok(self, h):
         """조용한 사람을 하루 두 번 넘게 찌르지 않기 (자리 비웠을 수도)."""
         return self.pester.get((self.day, h), 0) < 2
@@ -1097,7 +1432,8 @@ class Game:
         last = max([self.start] + [getattr(self, "_last_say", 0)])
         if now - last < 12 or now - getattr(self, "_last_nudge", 0) < 6:
             return
-        bs = [b for b in self.brains.values() if self.players[b.id].alive]
+        bs = [b for b in self.brains.values() if self.players[b.id].alive and b.id not in self.jailed
+              and now >= b.sulk_until]                     # 갇히거나 삐진 사람은 정적 깨기 안 함
         bs = [b for b in bs if now - self.ai_last.get(b.id, -99) > 9] or bs
         if bs:
             self._last_nudge = now
@@ -1108,12 +1444,16 @@ class Game:
         if self.phase == "night":
             return False                       # 밤은 항상 정해진 시간만큼 (일찍 끝나면 누가 능력자인지 티 남)
         if self.phase == "day":
-            hs = self.humans_alive()
+            if self.bomb or self.roulette:
+                return False
+            hs = [p for p in self.humans_alive() if p.id not in self.jailed]
             return el >= 10 and bool(hs) and all(p.id in self.ready for p in hs)
         if self.phase == "vote":
-            return el >= 4 and all(p.id in self.votes for p in self.alive_list())
+            return el >= 4 and all(p.id in self.votes for p in self.alive_list()
+                                   if p.id not in self.jailed and (p.id, self.day) not in self.no_vote)
         if self.phase == "judge":
-            return el >= 3 and all(p.id in self.judge for p in self.alive_list() if p.id != self.accused)
+            return el >= 3 and all(p.id in self.judge for p in self.alive_list()
+                                   if p.id != self.accused and p.id not in self.jailed and (p.id, self.day) not in self.no_vote)
         return False
 
     def _pump_ai(self, now):
@@ -1179,6 +1519,7 @@ class Game:
             self._begin_day(now)
         elif ph == "night":
             self._resolve_night()
+            self._release_jail()
             self._set_phase("morning", now)
         elif ph == "morning":
             if not self._check_win():
@@ -1200,10 +1541,14 @@ class Game:
                 self._begin_night(now)
 
     def _can_act(self, p):
-        if not p.alive:
+        if not p.alive or p.id in self.jailed:
             return False
         if self.phase == "night" and p.id == self.seduced:
             return False
+        if self.phase == "night" and (p.id, self.day) in self.no_ability:
+            return False                                   # 💣 패널티: 오늘 밤 능력 사용 불가
+        if p.id in self.lost and p.role in ("스파이", "마담"):
+            return False                                   # 💀 능력 소멸
         if p.role == "기자":
             return not self.reporter_used and self.day >= 2
         return p.role in ("마피아", "의사", "경찰", "스파이")
@@ -1239,14 +1584,17 @@ class Game:
         self._set_phase("day", now)
         self.sys(f"☀ {self.day}일째 낮. 토론 시간입니다. 다 말했으면 [토론 끝] 을 누르세요.")
         for b in self._live_brains():
-            b.on_day()
+            if b.id not in self.jailed:
+                b.on_day()
+        self._bomb_plan(now)
 
     def _begin_vote(self, now):
         self.votes = {}
         self._set_phase("vote", now)
         self.sys("🗳 투표 시간! 처형할 사람을 고르세요. (기권 가능)")
         for b in self._live_brains():
-            b.on_vote()
+            if b.id not in self.jailed:
+                b.on_vote()
 
     def _begin_selfintro(self, now):
         self.intro_order = [p.id for p in self.alive_list()]
@@ -1317,7 +1665,7 @@ class Game:
         ys = ", ".join(self.name(i) for i, v in self.judge.items() if v)
         ns = ", ".join(self.name(i) for i, v in self.judge.items() if v is False)
         self.sys(f"📊 찬반 결과: 찬성 {yes}" + (f"({ys})" if ys else "") + f" · 반대 {no}" + (f"({ns})" if ns else ""))
-        if yes > no and self.players[t].role == "정치인":
+        if yes > no and self.players[t].role == "정치인" and t not in self.lost:
             self.players[t].revealed = True
             self.sys(f"🏛 {self.name(t)}님은 정치인이라 투표로 처형되지 않습니다!")
             for b in self.brains.values():
@@ -1355,7 +1703,7 @@ class Game:
         if kill and kill in heals:
             self.sys(f"💉 {self.name(kill)}님이 마피아의 공격을 받았지만 의사의 치료로 살아났습니다!")
             kill = None
-        elif kill and kill in self.shield:
+        elif kill and kill in self.shield and kill not in self.lost:
             self.shield.discard(kill)
             kp = self.players[kill]
             kp.revealed = True
@@ -1424,7 +1772,7 @@ class Game:
         return True
 
     def vote_weight(self, pid):
-        return 2 if self.players[pid].role == "정치인" else 1
+        return 2 if self.players[pid].role == "정치인" and pid not in self.lost else 1
 
     def _check_win(self):
         alive = self.alive_list()
@@ -1457,17 +1805,22 @@ class Game:
         p = self.players.get(pid)
         if not p or not p.alive or self.phase not in ("night", "vote", "day"):
             return []
+        if pid in self.jailed:
+            return []
         alive = [q.id for q in self.alive_list()]
+        free = [t for t in alive if t not in self.jailed]
         if self.phase == "day":
             if p.role == "마담" and self.seduced_by != pid:
                 return [t for t in alive if t != pid and self.players[t].role not in ("마피아", "마담")]
             return []
         if self.phase == "vote" and not (p.role == "마담" and self.seduced_by != pid and self._seduce_mode(pid)):
-            return [t for t in alive if t != pid]
+            if (pid, self.day) in self.no_vote:
+                return []
+            return [t for t in free if t != pid]            # 감옥에 있는 사람은 투표 대상 아님
         if not self._can_act(p):
             return []
         if p.role == "마피아":
-            return [t for t in alive if self.players[t].role != "마피아"]
+            return [t for t in free if self.players[t].role != "마피아"]   # 감옥 안은 안전
         if p.role == "의사":
             return alive
         return [t for t in alive if t != pid]
@@ -1505,7 +1858,7 @@ class Game:
 
     def vote(self, pid, target):
         p = self.players.get(pid)
-        if self.phase != "vote" or not p or not p.alive:
+        if self.phase != "vote" or not p or not p.alive or pid in self.jailed or (pid, self.day) in self.no_vote:
             return False
         if target is not None and target not in self.targets(pid):
             return False
@@ -1515,7 +1868,8 @@ class Game:
 
     def judge_vote(self, pid, yes):
         p = self.players.get(pid)
-        if self.phase != "judge" or not p or not p.alive or pid == self.accused:
+        if (self.phase != "judge" or not p or not p.alive or pid == self.accused or pid in self.jailed
+                or (pid, self.day) in self.no_vote):
             return False
         self.judge[pid] = bool(yes)
         self.version += 1
@@ -1538,6 +1892,8 @@ class Game:
 
     def set_ready(self, pid):
         p = self.players.get(pid)
+        if self.bomb:
+            return False                                   # 💣 폭탄이 있는 동안은 '토론 끝' 불가
         if self.phase == "day" and p and p.alive:
             self.ready.add(pid)
             self.version += 1
@@ -1553,6 +1909,10 @@ class Game:
         if self.phase == "end":
             self.post("say", text, pid, "all")
             return True
+        if pid in self.jailed:
+            if not p.ai:
+                self.sys("🔒 감옥에 있어서 말할 수 없어요. (내일 아침 석방)", to=pid)
+            return False
         if not p.alive:
             self.post("dead", text, pid, "dead")
             if not p.ai:
@@ -1776,6 +2136,12 @@ class Game:
         else:
             mine = pers.get("tj" if own == "ban" else "t", {})
             gen = GENERIC
+        if intent.startswith("ev_"):
+            bp = BOMB_P.get(self.players[pid].persona, {}).get(intent)
+            native = "ban" if own == "ban" else "jon"
+            if bp and (sp == native or own == "mix"):
+                return bp + [t for t in gen.get(intent, []) if t not in bp][:2]
+            return gen.get(intent) or gen["quiet"]
         if SWEAR_LV.get(self.players[pid].persona) and intent in LIGHT_B and self.rng.random() < .3:
             light = (LIGHT_B if sp == "ban" else LIGHT_J).get(intent)
             if light:
@@ -1836,8 +2202,10 @@ class Game:
         seen.append(best[0])
         return best[1]
 
-    def ai_line(self, pid, intent, x=None, d=None, scope="all", q="", fb=None, y=None, z=None, r_="", v=None):
+    def ai_line(self, pid, intent, x=None, d=None, scope="all", q="", fb=None, y=None, z=None, r_="", v=None, wait=None):
         p = self.players[pid]
+        if pid in self.jailed and self.phase != "end":
+            return                                         # 갇힌 AI 는 말 자체를 안 만듦 (Claude 호출도 X)
         base = fb if (intent == "chat" and fb) else intent
         if intent == "reply":                         # 대체 대사: 의심받았으면 해명, 아니면 '모르겠다'
             base = "defend" if (name_re(p.name).search(q) and any(w in q for w in ACCUSE_W)) else "quiet"
@@ -1891,7 +2259,7 @@ class Game:
                     said, why = "", "claim-mismatch"
                 if said and p.role in MAFIA_TEAM and scope == "all" and re.search(r"(우리|동료|같은 편)", said):
                     said, why = "", "team-leak"
-                if said and intent not in DIRECT and self.too_similar(said, pid):
+                if said and intent not in DIRECT and not intent.startswith("ev_") and self.too_similar(said, pid):
                     said, why = "", "similar"
                 if said and intent == "last_defense":
                     said = "\n".join(split_many(said, 3))
@@ -1902,7 +2270,7 @@ class Game:
                 # 실패·늦음·걸러짐 → 기본 대사로 (조용해지지 않게)
                 self.inbox.put((pid, said or text, scope, kind, phase, day, intent, to))
             self.stylist(req, cb)
-            self.schedule(11 if big else 8, lambda: cb(None))
+            self.schedule(wait or (11 if big else 8), lambda: cb(None))
             return
         self.ai_log.append(dict(t=round(self.now, 1), day=day, ph=phase, who=p.name, intent=intent, src="template",
                                 x=text.replace("\n", " / ")))
@@ -2046,6 +2414,8 @@ class Game:
 
     def _ai_post(self, pid, text, scope, kind, to=None):
         p = self.players[pid]
+        if pid in self.jailed and self.phase != "end":
+            return
         if scope == "dead":
             if not p.alive and self.phase != "end":
                 self.post("dead", text, pid, "dead")
@@ -2110,13 +2480,15 @@ class Game:
                              v=tally.get(i, 0), voted=i in (self.judge if self.phase == "judge" else self.votes),
                              rd=i in self.ready, acc=(i == self.accused),
                              turn=(self.phase == "selfintro" and i == self.intro_cur),
-                             mp=(self.mafia_pick == i and pid in mafia_ids and self.phase == "night")))
+                             mp=(self.mafia_pick == i and pid in mafia_ids and self.phase == "night"),
+                             jail=i in self.jailed, bomb=bool(self.bomb and self.bomb["holder"] == i),
+                             pen=self.pen_today.get(i, "")))
         vis = []
         for m in self.chat:
             sc = m["sc"]
             ok = (sc == "all" or ended or sc == f"to:{pid}"
-                  or (sc == "mafia" and pid in mafia_ids)
-                  or (sc == "dead" and me is not None and (not me.alive or me.role == "영매")))
+                  or (sc == "mafia" and pid in mafia_ids and pid not in self.jailed)
+                  or (sc == "dead" and me is not None and (not me.alive or (me.role == "영매" and pid not in self.jailed))))
             if ok:
                 vis.append(dict(s=m["s"], k=m["k"], n=m["n"], x=m["x"], w=m["w"], me=m["w"] == pid and pid is not None,
                                 p=sc.startswith("to:")))
@@ -2124,7 +2496,8 @@ class Game:
                  total=max(int(self._dur(self.phase)), int(self.deadline - self.start)) if self.phase != "end" else 0,
                  players=rows, chat=vis[-80:], winner=self.winner, plan=plan_text(len(self.order), self.off),
                  accused=self.name(self.accused) if self.accused else "",
-                 turn=self.name(self.intro_cur) if self.phase == "selfintro" and self.intro_cur else "")
+                 turn=self.name(self.intro_cur) if self.phase == "selfintro" and self.intro_cur else "",
+                 bomb=self.bomb_view(now), roul=self.roul_view(now), ev=self.ev[-8:])
         if me:
             act = None
             if self.phase == "night" and self._can_act(me):
@@ -2133,9 +2506,12 @@ class Game:
                        "기자": "취재할 사람을 고르세요 (게임 중 1번)"}[me.role]
             elif self.phase == "day" and me.alive and me.role == "마담" and self.seduced_by != pid:
                 act = "💋 유혹할 사람을 고르세요 (그 사람은 오늘 밤 능력을 못 써요)"
+            elif self.phase == "vote" and me.alive and not self.targets(pid):
+                act = None
             elif self.phase == "vote" and me.alive:
                 act = "처형할 사람에게 투표하세요"
-            elif self.phase == "judge" and me.alive and pid != self.accused:
+            elif self.phase == "judge" and me.alive and pid != self.accused and pid not in self.jailed \
+                    and (pid, self.day) not in self.no_vote:
                 act = "찬성 / 반대를 눌러 주세요"
             v["me"] = dict(id=pid, role=me.role, desc=ROLE_INFO[me.role][1], alive=me.alive,
                            team=self.team_of(pid), act=act, targets=self.targets(pid),
@@ -2146,7 +2522,12 @@ class Game:
                            ext=(self.phase == "day" and me.alive and not me.ai and (pid, self.day) not in self.ext_used), judge=self.judge.get(pid),
                            accused=pid == self.accused, myturn=(self.phase == "selfintro" and pid == self.intro_cur),
                            medium=me.role == "영매",
-                           can_chat=(ended or not me.alive or ((self.phase != "night" or pid in mafia_ids or me.role == "영매")
+                           jailed=pid in self.jailed, novote=(pid, self.day) in self.no_vote,
+                           holder=bool(self.bomb and self.bomb["holder"] == pid),
+                           btg=self.bomb_targets(pid), spin=bool(self.roulette and self.roulette["who"] == pid
+                                                                  and self.roulette["t0"] is None),
+                           can_chat=(ended or not me.alive or (pid not in self.jailed
+                                                              and (self.phase != "night" or pid in mafia_ids or me.role == "영매")
                                                               and (self.phase != "defense" or pid == self.accused))))
         return v
 
@@ -2857,6 +3238,65 @@ class Brain:
             else:
                 self.pick_y = self.rng.choice(cands)
         return kind, x
+
+    # ---------------------------------------------------------- 💣 폭탄
+    def on_bomb_got(self, giver):
+        g = self.g
+        self.bomb_tgt, self.bomb_tgt_until = None, 0
+        self.bomb_wait = g.now + self.rng.uniform(1, 3)          # 1~3초 망설임
+        self.fled = set()
+        g.ai_line(self.id, "ev_got", wait=1.5, q="폭탄을 받음" + (f" ({g.name(giver)}에게서)" if giver else ""))
+
+    def _pick_bomb_target(self, exclude=()):
+        g = self.g
+        cands = [c for c in g.bomb_targets(self.id) if c not in exclude]
+        if not cands:
+            return None
+        def w(c):
+            x = .6 + max(0, self.sus.get(c, 0)) + (.8 if self.level(c) >= 1 else 0)
+            if self.mafia_side and c in self.team():
+                x *= .15                                          # 동료한텐 잘 안 줌 (단서가 되게)
+            x *= 1 / (1 + g.dist(self.id, c) / 400)              # 가까운 쪽이 편함
+            return x
+        return self.rng.choices(cands, weights=[w(c) for c in cands])[0]
+
+    def bomb_step(self, now):
+        """폭탄을 든 AI: 대상을 정해 걸어가고(필요하면 달리고) 붙으면 건넴. 너무 도망 다니면 대상 바꿈."""
+        g = self.g
+        if now < getattr(self, "bomb_wait", 0):
+            return
+        t = getattr(self, "bomb_tgt", None)
+        if t is None or t not in g.bomb_targets(self.id) or now > self.bomb_tgt_until:
+            t = self._pick_bomb_target(exclude=(t,) if t else ())
+            self.bomb_tgt = t
+            patience = {"하린": 14, "서연": 12, "지훈": 7, "도윤": 9}.get(self.p.persona, 10)
+            self.bomb_tgt_until = now + patience * self.rng.uniform(.7, 1.2)
+        if t is None:
+            return
+        g.ai_moves[self.id] = ("chase", t, now + 1)
+        if g.dist(self.id, t) <= g.reach and now - g.bomb["got"] >= 1.5:
+            g.bomb_pass(self.id, t, slack=1.0)
+
+    def bomb_near(self, holder, now):
+        """폭탄 든 사람이 가까이 오면: 도망 / 버팀 / 일부러 다가감 (성격별)."""
+        g = self.g
+        if self.id in g.jailed:
+            return
+        d = g.dist(self.id, holder)
+        mv = BOMB_MOVE.get(self.p.persona, "flee")
+        if d < g.reach * 3:
+            if mv == "flee":
+                g.ai_moves[self.id] = ("flee", holder, now + 1.5)
+                key = (g.bomb_n, holder)
+                fl = getattr(self, "fled_said", set())
+                if key not in fl and self.rng.random() < .6:
+                    fl.add(key)
+                    self.fled_said = fl
+                    g.ai_line(self.id, "ev_flee", x=holder, wait=1.5, q=f"폭탄 든 {g.name(holder)}이(가) 다가옴")
+            elif mv == "approach" and self.rng.random() < .02:
+                g.ai_moves[self.id] = ("approach", holder, now + 1.2)
+        elif self.id in g.ai_moves and g.ai_moves[self.id][0] in ("flee", "approach") and now > g.ai_moves[self.id][2]:
+            g.ai_moves.pop(self.id, None)
 
     def respond(self, who, text):
         """감독이 고른 사람: 방금 말에 맞게 받기."""
