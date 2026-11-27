@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.2"
+VERSION = "1.3"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -967,9 +967,100 @@ class App:
             else:
                 txt = "방을 찾는 중…"
             self.l_role.configure(text=txt, fg=TXT)
-            plan = lb.get("plan", "") if lb else ""
-            llm = "  ·  AI 말투: Claude" if lb and lb.get("llm") else ""
-            self.l_desc.configure(text=(f"이번 판 직업: {plan}{llm}" if plan else ""))
+            llm = "  ·  🤖 AI 대화: Claude" if lb and lb.get("llm") else ""
+            self.l_desc.configure(text=("이번 판 직업 — 직업을 누르면 특성을 볼 수 있어요" + llm) if lb else "")
+        self.draw_chips()
+
+    def draw_chips(self):
+        """대기실: 이번 판 직업을 칩으로 (누르면 특성 팝업)."""
+        tk = self.tk
+        fr = getattr(self, "chips_fr", None)
+        if fr is None or not fr.winfo_exists():
+            fr = self.chips_fr = tk.Frame(self.role_fr, bg=PANEL)
+            self._chips_key = None
+        if self.view is not None or not self.lobby:
+            if fr.winfo_ismapped():
+                fr.pack_forget()
+            self._chips_key = None
+            return
+        total, off, _, _ = self.board_state()
+        roles = core.role_plan(total, off)
+        key = (total, tuple(sorted(off)), self.size_mode)
+        if not fr.winfo_ismapped():
+            fr.pack(fill="x", padx=self.px(8), pady=(0, self.px(6)))
+        if key == self._chips_key:
+            return
+        self._chips_key = key
+        for w in fr.winfo_children():
+            w.destroy()
+        line = tk.Frame(fr, bg=PANEL)
+        line.pack(fill="x")
+        width, maxw = 0, max(self.root.winfo_width(), self.px(380)) - self.px(60)
+        for role in core.BOARD_ORDER:
+            cnt = roles.count(role)
+            if not cnt:
+                continue
+            mafia = core.ROLE_INFO[role][0] == "mafia"
+            text = f"{core.ROLE_ICON.get(role, '')} {role}" + (f" ×{cnt}" if cnt > 1 else "")
+            chip = tk.Label(line, text=text, bg="#fde2e4" if mafia else "#e6eefc", fg=RED if mafia else "#2457c5",
+                            font=self.f(9, True), padx=self.px(7), pady=self.px(2), cursor="hand2")
+            w = chip.winfo_reqwidth() + self.px(4)
+            if width + w > maxw:                      # 줄바꿈
+                line = tk.Frame(fr, bg=PANEL)
+                line.pack(fill="x", pady=(self.px(3), 0))
+                chip.destroy()
+                chip = tk.Label(line, text=text, bg="#fde2e4" if mafia else "#e6eefc",
+                                fg=RED if mafia else "#2457c5", font=self.f(9, True), padx=self.px(7),
+                                pady=self.px(2), cursor="hand2")
+                width = 0
+            chip.pack(side="left", padx=(0, self.px(4)))
+            chip.bind("<Button-1>", lambda e, r_=role: self.role_popup(r_, e))
+            width += w
+
+    def role_popup(self, role, e=None):
+        """직업 하나의 특성 팝업 (아무 데나 누르거나 마우스가 나가면 닫힘)."""
+        tk = self.tk
+        old = getattr(self, "popup", None)
+        if old is not None and old.winfo_exists():
+            old.destroy()
+        p = self.popup = tk.Toplevel(self.root)
+        p.overrideredirect(True)
+        p.attributes("-topmost", True)
+        p.configure(bg=LINE)
+        mafia = core.ROLE_INFO[role][0] == "mafia"
+        body = tk.Frame(p, bg=PANEL)
+        body.pack(fill="both", expand=True, padx=1, pady=1)
+        head = tk.Frame(body, bg="#fde2e4" if mafia else "#e6eefc")
+        head.pack(fill="x")
+        tk.Label(head, text=f"{core.ROLE_ICON.get(role, '')} {role}", bg=head["bg"], fg=RED if mafia else "#2457c5",
+                 font=self.f(14, True)).pack(side="left", padx=self.px(12), pady=self.px(8))
+        tk.Label(head, text="마피아 팀" if mafia else "시민 팀", bg=head["bg"], fg=RED if mafia else "#2457c5",
+                 font=self.f(9, True)).pack(side="right", padx=self.px(12))
+        tk.Label(body, text=core.ROLE_INFO[role][1], bg=PANEL, fg=TXT, font=self.f(10), justify="left",
+                 anchor="w", wraplength=self.px(300)).pack(fill="x", padx=self.px(12), pady=(self.px(8), self.px(4)))
+        for t in core.ROLE_TRAITS.get(role, []):
+            tk.Label(body, text="•  " + t, bg=PANEL, fg=SUB, font=self.f(9), anchor="w").pack(fill="x", padx=self.px(14))
+        need = core.OPTIONAL.get(role)
+        foot = core.WIN_TEXT["mafia" if mafia else "town"] + (f"  ·  {need}인부터 등장" if need else "  ·  항상 등장")
+        tk.Label(body, text=foot, bg=PANEL, fg="#a0a6b4", font=self.f(8), anchor="w").pack(
+            fill="x", padx=self.px(12), pady=(self.px(6), self.px(10)))
+        p.update_idletasks()
+        x = (e.x_root if e else self.root.winfo_rootx()) - p.winfo_reqwidth() // 2
+        y = (e.y_root if e else self.root.winfo_rooty()) + self.px(14)
+        x = min(max(0, x), self.root.winfo_screenwidth() - p.winfo_reqwidth())
+        y = min(y, self.root.winfo_screenheight() - p.winfo_reqheight() - self.px(10))
+        p.geometry(f"+{x}+{y}")
+        for w in [p, body, head] + list(body.winfo_children()) + list(head.winfo_children()):
+            w.bind("<Button-1>", lambda ev: p.destroy())
+        p.bind("<Leave>", lambda ev: p.after(150, lambda: p.winfo_exists() and not self._pointer_in(p) and p.destroy()))
+
+    def _pointer_in(self, w):
+        try:
+            x, y = w.winfo_pointerxy()
+            return w.winfo_rootx() <= x < w.winfo_rootx() + w.winfo_width() and \
+                w.winfo_rooty() <= y < w.winfo_rooty() + w.winfo_height()
+        except Exception:
+            return False
 
     def draw_players(self):
         cv = self.cv
@@ -1238,9 +1329,11 @@ class App:
                 hs = len(self.host.humans())
                 hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원과 직업(📋 직업판)을 정하세요"
                 btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
-                        ("+", lambda: self.set_total(1), SOFT), ("게임 시작 ▶", self.host_start, ACCENT)]
+                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT),
+                        ("게임 시작 ▶", self.host_start, ACCENT)]
             else:
-                hint = "채팅으로 인사하며 기다려요 👋  ·  📋 직업판에서 이번 판 직업을 볼 수 있어요"
+                hint = "채팅으로 인사하며 기다려요 👋  ·  직업을 누르면 특성을 볼 수 있어요"
+                btns = [("📋 직업판 보기", self.open_board, SOFT)]
         elif ph == "night":
             if me.get("act"):
                 if me.get("picked") and not (me["role"] in ("마피아", "의사")):
@@ -1397,7 +1490,12 @@ class App:
                                                                                                 padx=self.px(8))
             tk.Label(row, text=core.ROLE_INFO[role][1], bg=PANEL, fg="#a0a6b4" if dim else SUB, font=self.f(9),
                      anchor="w", justify="left", wraplength=self.px(470)).pack(fill="x", padx=self.px(10),
-                                                                              pady=(0, self.px(6)))
+                                                                              pady=(0, self.px(2)))
+            tags = tk.Frame(row, bg=PANEL)
+            tags.pack(fill="x", padx=self.px(10), pady=(0, self.px(6)))
+            for t in core.ROLE_TRAITS.get(role, []):
+                tk.Label(tags, text=t, bg="#f1f3f8", fg="#a0a6b4" if dim else "#4b5163", font=self.f(8),
+                         padx=self.px(5), pady=self.px(1)).pack(side="left", padx=(0, self.px(4)))
 
     def toggle_role(self, role, on):
         h = self.host

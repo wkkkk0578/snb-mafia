@@ -1,11 +1,11 @@
 {
- "version": 10,
- "note": "나갔다 들어오면 인원 중복되는 버그 수정",
+ "version": 11,
+ "note": "대기실 직업 칩·특성 팝업",
  "files": {
-  "mafia.py": "f604817bbec95245c558c70918c98fb0c45e6c4db5c078ce4169a51f86b84e2d",
-  "mafia_core.py": "56fa3dee74996deb122c0df40ea6e54acf81899394fb1c692a860b86fe8db8d5",
+  "mafia.py": "bd109baa5fad6584ee88e64445abaa84b3ffce79bd0d7859de7f24ad74e8af66",
+  "mafia_core.py": "2367c4718e7a498d916c2e087a22cf7dde738b99e6805a445afd1316a10274a3",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "02080e8447dd935f03eadd4ae3e515dc5163dfc5a1a643c3b82c6a8de4b5b507"
+  "안내.txt": "65a4e2b0abab9e3298f0b306c8273f7a5c60790417723bc4fca9e3bf8a0e0385"
  }
 }
