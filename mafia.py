@@ -19,9 +19,12 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.6"
+VERSION = "1.7"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
-SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
+APPDIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia")
+SETTINGS = os.path.join(APPDIR, "settings.json")
+ROLE_HIST = os.path.join(APPDIR, "role_history.json")    # 사람별 최근 직업 (방장 PC) — 시민만 계속 나오지 않게
+LOGDIR = os.path.join(APPDIR, "logs")                     # 판별 채팅 기록 · 이상한 말 표시
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
 
 
@@ -164,6 +167,9 @@ class Host:
         self.last_lobby, self.sent_ver, self.last_views = 0, -1, 0
         self.lobby_chat = []
         self.notices = []
+        self.banmal = True                                 # AI 반말 허용
+        self.hist = read_json(ROLE_HIST, {})               # id → 최근 직업들
+        self.logged = False
 
     def humans(self):
         out = []
@@ -251,12 +257,31 @@ class Host:
                                used_chars={m["ch"] for m in mem})
         random.shuffle(mem)
         self.gid = uuid.uuid4().hex[:8]
-        self.game = core.Game(mem, now=time.time(), stylist=self.stylist, off=tuple(self.off))
+        self.game = core.Game(mem, now=time.time(), stylist=self.stylist, off=tuple(self.off),
+                              banmal=self.banmal, history={h: self.hist.get(h, []) for h in hs})
+        self.logged = False
         self.sent_ver = -1
         self.last_lobby = 0
         for h in hs:                                   # 다음 판은 다시 준비부터
             self.members[h]["rdy"] = False
         return True
+
+    def save_game(self):
+        """게임이 끝나면: 사람별 직업 기록 + 판 로그 저장 (방장 PC)."""
+        g = self.game
+        if not g or self.logged:
+            return
+        self.logged = True
+        for p in g.players.values():
+            if not p.ai:
+                self.hist[p.id] = (self.hist.get(p.id, []) + [p.role])[-6:]
+        write_json(ROLE_HIST, self.hist)
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        write_json(os.path.join(LOGDIR, f"game_{stamp}_{self.gid}.json"), dict(
+            gid=self.gid, when=stamp, winner=g.winner, build=BUILD,
+            players=[dict(name=p.name, ai=p.ai, role=p.role, persona=p.persona) for p in g.players.values()],
+            chat=[dict(n=m["n"], k=m["k"], sc=m["sc"], x=m["x"]) for m in g.chat],
+            ai=g.ai_log))
 
     def back_to_lobby(self):
         self.game, self.gid = None, ""
@@ -267,7 +292,7 @@ class Host:
                     members=[dict(id=h, nick=self.nick_of(h), ch=self.members[h].get("ch"),
                                  rdy=h == self.me or bool(self.members[h].get("rdy"))) for h in self.humans()],
                     plan=core.plan_text(max(self.total, len(self.humans()), core.MIN_PLAYERS), self.off),
-                    off=sorted(self.off),
+                    off=sorted(self.off), banmal=self.banmal,
                     llm=bool(self.stylist))
 
     def tick(self, now):
@@ -287,6 +312,8 @@ class Host:
                                 else f"🤖 Claude 연결 문제: {st} → 기본 대사로 진행해요. (시작 화면 맨 아래 '🤖 AI 대화'에서 키를 다시 넣어 주세요)")
         if g:
             g.tick(now)
+            if g.phase == "end":
+                self.save_game()
             changed = g.version != self.sent_ver
             if changed or now - self.last_views > 2.5:
                 self.sent_ver, self.last_views = g.version, now
@@ -504,10 +531,12 @@ class App:
             self.net = Net(self.cfg["url"], self.cfg["key"], room)
         stylist = None
         if mode != "join" and self.api_key():
-            stylist = core.make_claude_stylist(self.api_key(), self.cfg.get("claude_model", "claude-haiku-5-5"))
+            stylist = core.make_claude_stylist(self.api_key(), self.cfg.get("claude_model", "claude-haiku-5-5"),
+                                               self.cfg.get("claude_model_big", "claude-sonnet-5-5") or None)
         self.host = Host(self.me, nick, self.net, stylist) if mode != "join" else None
         if self.host:
             self.host.off = set(self.st.get("roles_off", [])) & set(core.OPTIONAL)
+            self.host.banmal = self.st.get("banmal", True)
         if mode == "solo":
             self.host.total = 8
         self.lobby, self.view, self.gid, self.last_seq = None, None, "", 0
@@ -590,6 +619,8 @@ class App:
         self.txt.tag_configure("dead", foreground="#8a8f9c")
         self.txt.tag_configure("me", foreground="#2457c5")
         self.txt.tag_configure("name", font=self.f(10, True))
+        self.txt.tag_configure("flag", background="#fff1c2")
+        self.txt.bind("<Double-Button-1>", self.flag_line)
         for txt, d in (("◀", -1), ("▶", 1)):
             b = self.btn(inp, txt, None, SOFT, small=True)
             b.configure(command=lambda: None, padx=self.px(6))
@@ -728,6 +759,27 @@ class App:
             self.l_room.configure(text=f"{dot} 방 코드 {self.room}  (클릭해서 복사)   {txt}", fg=col)
 
     # ------------------------------------------------ 채팅
+    def flag_line(self, e):
+        """게임 끝 화면에서 채팅 줄을 더블클릭 → '이상했던 AI 말'로 표시 (다음 개선 재료)."""
+        if not (self.view and self.view.get("phase") == "end"):
+            return "break"
+        t = self.txt
+        i = t.index(f"@{e.x},{e.y}")
+        a, b = t.index(f"{i} linestart"), t.index(f"{i} lineend")
+        line = t.get(a, b).strip()
+        if not line:
+            return "break"
+        t.tag_add("flag", a, b)
+        try:
+            os.makedirs(LOGDIR, exist_ok=True)
+            with open(os.path.join(LOGDIR, "flags.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(dict(when=time.strftime("%Y%m%d_%H%M%S"), gid=self.gid, line=line,
+                                        build=BUILD), ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        self.add_line("priv", f"🚩 표시했어요: {line[:30]}")
+        return "break"
+
     def add_line(self, kind, text, name="", mine=False):
         if not mine:
             self.flash_until = time.time() + 3.5
@@ -992,7 +1044,8 @@ class App:
             else:
                 txt = "방을 찾는 중…"
             self.l_role.configure(text=txt, fg=TXT)
-            llm = "  ·  🤖 AI 대화: Claude" if lb and lb.get("llm") else ""
+            llm = ("  ·  🤖 AI 대화: Claude" if lb and lb.get("llm") else "") + \
+                  ("  ·  AI 반말 허용" if lb and lb.get("banmal", True) else "  ·  AI 존댓말만" if lb else "")
             self.l_desc.configure(text=("이번 판 직업 — 직업을 누르면 특성을 볼 수 있어요" + llm) if lb else "")
         self.draw_chips()
 
@@ -1362,7 +1415,8 @@ class App:
                     hint = f"⏳ 준비 기다리는 중: {names}  ·  모두 준비하면 시작할 수 있어요"
                 start = (f"준비 {hs - 1 - len(wait)}/{hs - 1}", None, None) if wait else ("게임 시작 ▶", self.host_start, ACCENT)
                 btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
-                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT), start]
+                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT),
+                        ("AI 반말 " + ("ON" if self.host.banmal else "OFF"), self.toggle_banmal, SOFT), start]
             else:
                 if self.my_ready:
                     hint = "✅ 준비 완료! 방장이 시작하길 기다려요"
@@ -1400,7 +1454,7 @@ class App:
         elif ph == "vote":
             if me.get("alive"):
                 hint = ("🗳 처형할 사람의 바탕화면 캐릭터를 클릭하세요" if getattr(self, "size_mode", "big") in ("nolist", "chat") else "🗳 처형할 사람을 클릭하세요") \
-                    + ("  (다시 클릭하면 변경)" if me.get("picked") else "")
+                    + ("  (다시 클릭하면 변경)" if me.get("picked") else "  ·  🔒 몇 표인지는 마감 후 공개")
                 btns = [("기권", lambda: self.do_act("vote", None), SOFT)]
         elif ph == "selfintro":
             if me.get("myturn"):
@@ -1422,7 +1476,7 @@ class App:
             elif me.get("accused"):
                 hint = "🙏 다들 찬반을 고르는 중… 운명을 기다리세요"
         elif ph == "end":
-            hint = "수고하셨어요! 모든 직업이 공개됐어요."
+            hint = "수고하셨어요! 이상했던 AI 말은 채팅 줄을 더블클릭해 🚩 표시해 주세요."
             if self.host:
                 btns = [("대기실로 (다시 하기)", self.host_lobby, ACCENT)]
         if getattr(self, "size_mode", "big") == "chat":
@@ -1550,6 +1604,16 @@ class App:
         self._act_key = None
 
     # ------------------------------------------------ 방장 조작
+    def toggle_banmal(self):
+        h = self.host
+        if not h or h.game:
+            return
+        h.banmal = not h.banmal
+        self.st["banmal"] = h.banmal
+        write_json(SETTINGS, self.st)
+        h.last_lobby = 0
+        self._act_key = None
+
     def set_total(self, d):
         h = self.host
         hs = len(h.humans())
