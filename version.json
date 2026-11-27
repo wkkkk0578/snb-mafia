@@ -1,11 +1,11 @@
 {
- "version": 15,
- "note": "AI 채팅 기획안 전체 반영 · 비밀 투표 · 유령 채팅 AI · 밤 시간 고정 · 방장 직업 확률",
+ "version": 16,
+ "note": "한글 입력 끊김 수정 (조합 중 포커스·스페이스·엔터)",
  "files": {
-  "mafia.py": "63896388bf11f0a9203b02b0acb8204844d104a95b1dbf46e1ca0224f3394a8e",
+  "mafia.py": "1ad7618e3f4749cd3c0f110e1076f8b4e98cc34f398983dbd02768d78b0bbd1c",
   "mafia_core.py": "c76088a08713ffb40c9bf70dc544b3b84a5c2f3dd22c3d1ee9190faa8fbbc9bf",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
-  "안내.txt": "65a4e2b0abab9e3298f0b306c8273f7a5c60790417723bc4fca9e3bf8a0e0385"
+  "안내.txt": "e7176cd592311681406df92cd9c14bff6d2a2d3c54488bbed8b19fa2b7515583"
  }
 }

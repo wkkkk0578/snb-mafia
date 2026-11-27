@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.7"
+VERSION = "1.8"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 APPDIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia")
 SETTINGS = os.path.join(APPDIR, "settings.json")
@@ -384,7 +384,7 @@ class App:
         self._stop_job = None
         self._rel = {}
         self.desk.refocus = self.refocus
-        # 먼작귀펫처럼: 입력칸이 비었을 때 ← → 걷기 · Shift+← → 달리기 · ↑ / Space 점프.
+        # 먼작귀펫처럼: 입력칸이 비었을 때 ← → 걷기 · Shift+← → 달리기 · ↑ 점프.
         # bind_all → 투명 창이 포커스를 잠깐 가져가도 키가 들어온다
         for d, k in ((-1, "Left"), (1, "Right")):
             self.root.bind_all(f"<KeyPress-{k}>", lambda e, d=d: self.key_walk(d, True, e))
@@ -634,8 +634,8 @@ class App:
         self.e_chat = tk.Entry(inp, font=self.f(11), bg=PANEL, fg=TXT, insertbackground=TXT, relief="flat",
                                highlightthickness=1, highlightbackground=LINE, highlightcolor=ACCENT)
         self.e_chat.pack(side="left", fill="x", expand=True, ipady=self.px(5))
-        self.e_chat.bind("<Return>", lambda e: self.send_chat())
-        self.e_chat.bind("<KeyPress-space>", lambda e: self.key_jump())
+        self.e_chat.bind("<Return>", lambda e: (self.root.after(60, self.send_chat), "break")[1])   # 한글 조합이 끝난 뒤 보냄
+        # (스페이스 점프는 뺌: 한글 조합 중 스페이스를 가로채 글자가 사라지는 문제) — 점프는 ↑ 키
         self.b_send = self.btn(inp, "전송", self.send_chat, ACCENT, small=True)
         self.b_send.pack(side="right", padx=(self.px(6), 0))
         self._chat_mode = None
@@ -827,9 +827,10 @@ class App:
         self._chat_mode = (ok, msg)
         self.l_chat.configure(text=msg, fg=SUB if ok else GOLD)
         if ok:
-            self.e_chat.configure(state="normal", bg=PANEL)
+            if str(self.e_chat.cget("state")) != "normal":
+                self.e_chat.configure(state="normal", bg=PANEL)
             self.b_send.configure(state="normal")
-            self.e_chat.focus_set()
+            self.focus_chat()
         else:
             self.e_chat.configure(state="disabled", disabledbackground="#1c1e26")
             self.b_send.configure(state="disabled")
@@ -1318,6 +1319,17 @@ class App:
     def chat_ready(self):
         return hasattr(self, "e_chat") and self.e_chat.winfo_exists()
 
+    def focus_chat(self):
+        """채팅칸에 포커스 — 이미 있거나 한글 조합 중이면 건드리지 않음 (건드리면 조합 중인 글자가 사라짐)."""
+        try:
+            if not self.chat_ready() or str(self.e_chat.cget("state")) != "normal":
+                return
+            if self.root.focus_get() is self.e_chat or ime_busy():
+                return
+            self.e_chat.focus_set()
+        except Exception:
+            pass
+
     def can_move_key(self):
         """입력칸이 비었고 한글 조합 중이 아닐 때만 방향키로 조종 (글 쓰는 중엔 커서 이동)."""
         if not self.chat_ready():
@@ -1357,7 +1369,7 @@ class App:
         except Exception:
             f = None
         if f is not None and f.winfo_toplevel() is not self.root and self.chat_ready():
-            self.e_chat.focus_set()
+            self.focus_chat()
 
     def pick_target(self, pid):
         v = self.view
@@ -1389,8 +1401,7 @@ class App:
             self.redraw()
 
     def on_click(self, e):
-        if str(self.e_chat.cget("state")) == "normal":
-            self.e_chat.focus_set()
+        self.focus_chat()
         v = self.view
         me = (v or {}).get("me")
         if not me:
