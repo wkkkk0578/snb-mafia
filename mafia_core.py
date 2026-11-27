@@ -208,7 +208,7 @@ INTENT_DESC = {
     "judge_yes": "{x}의 처형에 찬성한다고 짧게 말하기",
     "judge_no": "{x}의 처형에 반대한다고 짧게 말하기",
     "reply": "방금 {x}이(가) 나한테 한 말에 대답하기: \"{q}\"",
-    "chat": "지금 대화 흐름에 자연스럽게 한마디 (질문에 답하기 / 누군가의 말에 동의·반박 / 근거를 대고 의심 / 궁금한 걸 질문). 덧붙일 말이 없으면 PASS",
+    "chat": "지금 대화 흐름에 자연스럽게 한마디 (질문에 답하기 / 누군가의 말에 동의·반박 / 근거를 대고 의심 / 궁금한 걸 질문)",
     "ask": "{x}에게 의견이나 근거를 물어보기",
     "self_intro": "사회자가 부른 내 자기소개 차례: 내 캐릭터답게 가볍게 한 줄 자기소개 (직업은 절대 밝히지 말 것, 마피아면 시민인 척)",
     "intro_react": "방금 {x}이(가) 한 자기소개를 장난스럽게 살짝 의심하거나 놀리는 한마디",
@@ -321,6 +321,8 @@ class Game:
         """kind: sys|say|mafia|dead. scope: all|mafia|dead|to:<pid>"""
         self.seq += 1
         self.chat.append(dict(s=self.seq, k=kind, w=who, n=self.name(who) if who else "", x=text, sc=scope))
+        if kind == "say" and scope == "all":
+            self._last_say = self.now
         if len(self.chat) > 400:
             self.chat = self.chat[-300:]
         self.version += 1
@@ -358,6 +360,7 @@ class Game:
             self.outq.append(dict(pid=pid, text=text, scope=scope, kind=kind, ph=ph, day=day,
                                   prio=prio, ready=now + typing, born=now))
         self._pump_ai(now)
+        self._dead_air(now)
         due = sorted([x for x in self.pending if x[0] <= now])
         self.pending = [x for x in self.pending if x[0] > now]
         for _, _, fn in due:
@@ -365,6 +368,18 @@ class Game:
                 fn()
         if self.phase != "end" and (now >= self.deadline or self._early(now)):
             self._advance(now)
+
+    def _dead_air(self, now):
+        """토론 중 12초 넘게 아무 말이 없으면 AI 한 명이 먼저 말을 꺼냄."""
+        if self.phase != "day" or not self.humans_alive() or self.outq:
+            return
+        last = max([self.start] + [getattr(self, "_last_say", 0)])
+        if now - last < 12 or now - getattr(self, "_last_nudge", 0) < 12:
+            return
+        bs = [b for b in self.brains.values() if self.players[b.id].alive]
+        if bs:
+            self._last_nudge = now
+            random.choice(bs)._day_line(False)
 
     def _early(self, now):
         el = now - self.start
@@ -858,10 +873,10 @@ class Game:
                 b.on_defend(pid, who)
 
     # ------------------------------------------------ AI 발언
-    def ai_line(self, pid, intent, x=None, d=None, scope="all", q=""):
+    def ai_line(self, pid, intent, x=None, d=None, scope="all", q="", fb=None):
         p = self.players[pid]
         pers = PERSONAS.get(p.persona, {})
-        base = intent
+        base = fb if (intent == "chat" and fb) else intent
         if intent == "reply":                         # 대체 대사: 의심받았으면 해명, 아니면 페르소나 '모르겠다'
             base = "defend" if (p.name in q and any(w in q for w in ACCUSE_W)) else "quiet"
             if base == "quiet" and not pers.get("t", {}).get("quiet"):
@@ -885,13 +900,9 @@ class Game:
                     return
                 done["v"] = True
                 self.llm_busy = max(0, self.llm_busy - 1)
-                if line is None:                          # 실패 → 기본 대사
-                    if intent != "chat":
-                        self.inbox.put((pid, text, scope, kind, phase, day, intent))
-                    return
-                said = clean_line(line, p.name)
-                if said:                                  # PASS 면 조용히 넘어감
-                    self.inbox.put((pid, said, scope, kind, phase, day, intent))
+                said = clean_line(line, p.name) if line is not None else ""
+                # 실패·늦음·PASS → 기본 대사로 (조용해지지 않게)
+                self.inbox.put((pid, said or text, scope, kind, phase, day, intent))
             self.stylist(req, cb)
             self.schedule(8, lambda: cb(None))       # 응답이 늦으면 기본 문장 (잡담은 생략)
             return
@@ -1201,29 +1212,32 @@ class Brain:
         if g.day == 1 and first and not g.stylist and self.rng.random() < .55:
             g.ai_line(self.id, "open")
             return
+        fb, fx = self.pick_line()
         if g.stylist:
-            g.ai_line(self.id, "chat")
+            g.ai_line(self.id, "chat", x=fx, fb=fb)
             return
+        if fb:
+            g.ai_line(self.id, fb, x=fx)
+
+    def pick_line(self):
+        """규칙으로 고른 '할 말' → (의도, 대상). Claude 가 없거나 실패할 때 씀."""
+        g = self.g
         t = self.top()
         if t is None:
-            return
+            return "quiet", None
         others_accuse = any(t in ts for a, ts in g.accused_today.items() if a != self.id)
         already = t in g.accused_today.get(self.id, set())
         sc = self.score(t)
         cf = self.conf(t) if not self.mafia_side else sc
         if sc > -500 and not already and (cf >= 1.5 or (others_accuse and cf >= 1.1)):
-            g.ai_line(self.id, "agree" if others_accuse else "accuse", x=t)
-        elif self.rng.random() < .6:
-            accusers = [a for a in g.accused_today if a != self.id and g.players[a].alive]
-            talkers = [m["w"] for m in g.chat if m["s"] > g.day_seq and m["w"] and m["w"] != self.id
-                       and m["k"] == "say" and g.players[m["w"]].alive]
-            pool = accusers or talkers
-            if pool:
-                g.ai_line(self.id, "ask", x=self.rng.choice(pool))
-            else:
-                g.ai_line(self.id, "quiet")
-        else:
-            g.ai_line(self.id, "quiet")
+            return ("agree" if others_accuse else "accuse"), t
+        accusers = [a for a in g.accused_today if a != self.id and g.players[a].alive]
+        talkers = [m["w"] for m in g.chat if m["s"] > g.day_seq and m["w"] and m["w"] != self.id
+                   and m["k"] == "say" and g.players[m["w"]].alive]
+        pool = accusers or talkers or [o for o in self.others() if not g.players[o].ai]
+        if pool and self.rng.random() < .75:
+            return "ask", self.rng.choice(pool)
+        return "quiet", None
 
     # 최후 변론 · 찬반
     def on_defense(self):
@@ -1482,7 +1496,7 @@ def make_claude_stylist(api_key, model="claude-haiku-5-5"):
                   "- 최근 채팅 흐름을 읽고 방금 나온 말에 반응하기. 혼자 딴 얘기 금지. 앞에서 내가 한 말 반복 금지.\n"
                   "- 근거 없이 몰아가지 말 것. 의심하려면 근거(투표 기록, 말 바꿈, 경찰 주장, 누굴 감쌌는지)를 짧게 대기. 근거가 없으면 질문하기.\n"
                   "- 누가 해명하면 그 해명을 듣고 납득하거나, 구체적인 허점을 물어보기. 같은 의심을 고집하지 말기.\n"
-                  "- 다른 사람이 이미 같은 말을 했거나 덧붙일 게 없으면 PASS 라고만 출력.\n"
+                  "- 할 말이 마땅치 않으면 누군가에게 짧게 질문하기 (조용히 있지 말 것).\n"
                   "- 지시가 없는데 자기 직업을 밝히지 말 것(마피아는 거짓말 가능).\n"
                   "[좋은 예] 민수님 어제 기권하셨던데 왜요? / 그건 좀 억지 같은데요 / 아 그럼 서연님은 빼야겠네요 / 저 아니에요 ㅋㅋ 어제 지훈님 찍었잖아요\n"
                   "[나쁜 예] 제가 사회생활 30년인데 눈빛을 보면 다 압니다 여러분 / 확률적으로 분석한 결과 마피아일 가능성이 높습니다")

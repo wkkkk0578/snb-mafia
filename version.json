@@ -1,9 +1,9 @@
 {
- "version": 11,
- "note": "대기실 직업 칩·특성 팝업",
+ "version": 12,
+ "note": "AI가 조용해지지 않게: Claude 실패 시 기본 대사 · 정적 12초면 AI가 먼저 말 걸기",
  "files": {
-  "mafia.py": "bd109baa5fad6584ee88e64445abaa84b3ffce79bd0d7859de7f24ad74e8af66",
-  "mafia_core.py": "2367c4718e7a498d916c2e087a22cf7dde738b99e6805a445afd1316a10274a3",
+  "mafia.py": "bea8d564e293cc94f9d194666f1e98444b7b66bc16f50155ded8d758a5f70c2c",
+  "mafia_core.py": "b81742cb1981e9e36d8074b7ba3f96e2fe654cf8e5767d0c0c6575c39b169826",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
   "안내.txt": "65a4e2b0abab9e3298f0b306c8273f7a5c60790417723bc4fca9e3bf8a0e0385"
