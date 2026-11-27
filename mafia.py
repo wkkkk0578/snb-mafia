@@ -19,7 +19,7 @@ sys.path.insert(0, HERE)
 import mafia_core as core  # noqa: E402
 import desk as deskmod  # noqa: E402
 
-VERSION = "1.4"
+VERSION = "1.5"
 # 설정(닉네임·고유 ID·창 위치)은 PC마다 따로 — 게임 폴더를 압축해 나눠줘도 ID가 겹치지 않게
 SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SnBMafia", "settings.json")
 OLD_SETTINGS = os.path.join(HERE, "settings.json")
@@ -205,6 +205,11 @@ class Host:
                     self.order.append(mid)
                 self.last_lobby = 0
             self.members[mid]["seen"] = time.time()
+            if "rdy" in m and not self.game:
+                on = bool(m.get("rdy"))
+                if self.members[mid].get("rdy") != on:
+                    self.members[mid]["rdy"] = on
+                    self.last_lobby = 0
         elif t == "bye":
             if mid in self.members and not (self.game and mid in self.game.players):
                 self.drop(mid)
@@ -230,7 +235,13 @@ class Host:
         elif kind == "say":
             g.say(pid, text)
 
+    def waiting(self):
+        """준비 안 한 사람 (방장 제외)."""
+        return [h for h in self.humans() if h != self.me and not self.members[h].get("rdy")]
+
     def start(self):
+        if self.waiting():
+            return False
         hs = self.humans()
         total = max(self.total, len(hs), core.MIN_PLAYERS)
         mem = [dict(id=h, name=self.nick_of(h), ai=False, ch=self.members[h].get("ch")) for h in hs]
@@ -241,6 +252,9 @@ class Host:
         self.game = core.Game(mem, now=time.time(), stylist=self.stylist, off=tuple(self.off))
         self.sent_ver = -1
         self.last_lobby = 0
+        for h in hs:                                   # 다음 판은 다시 준비부터
+            self.members[h]["rdy"] = False
+        return True
 
     def back_to_lobby(self):
         self.game, self.gid = None, ""
@@ -248,7 +262,8 @@ class Host:
 
     def lobby_msg(self):
         return dict(t="lobby", host=self.me, gid=self.gid, started=bool(self.game), total=self.total, build=BUILD,
-                    members=[dict(id=h, nick=self.nick_of(h), ch=self.members[h].get("ch")) for h in self.humans()],
+                    members=[dict(id=h, nick=self.nick_of(h), ch=self.members[h].get("ch"),
+                                 rdy=h == self.me or bool(self.members[h].get("rdy"))) for h in self.humans()],
                     plan=core.plan_text(max(self.total, len(self.humans()), core.MIN_PLAYERS), self.off),
                     off=sorted(self.off),
                     llm=bool(self.stylist))
@@ -326,6 +341,7 @@ class App:
         self.net = self.host = None
         self.lobby, self.view, self.gid, self.last_seq = None, None, "", 0
         self.view_at, self.last_hi, self.last_hb, self.last_from_host = 0, 0, 0, 0
+        self.my_ready = False
         self.status = ("", SUB)
         self.room = ""
         self.cells = []
@@ -778,6 +794,12 @@ class App:
             self.add_line("say", text, self.nick, True)
             self.desk.say(self.me, text[:200])
 
+    def toggle_ready(self):
+        self.my_ready = not self.my_ready
+        self.last_hi = time.time()
+        self.net.send(dict(t="hi", id=self.me, nick=self.nick, ver=VERSION, build=BUILD, rdy=self.my_ready))
+        self._act_key = None
+
     def do_act(self, kind, target=None, text=None):
         if self.host:
             self.host.act(self.me, kind, target, text)
@@ -823,7 +845,7 @@ class App:
         else:
             if now - self.last_hi > 2:
                 self.last_hi = now
-                self.net.send(dict(t="hi", id=self.me, nick=self.nick, ver=VERSION, build=BUILD))
+                self.net.send(dict(t="hi", id=self.me, nick=self.nick, ver=VERSION, build=BUILD, rdy=self.my_ready))
             if self.lobby and now - self.last_from_host > 10:
                 self.status = ("방장 연결이 끊긴 것 같아요…", RED)
             elif not self.lobby and now - self.last_from_host > 8 and self.net.ready:
@@ -864,6 +886,7 @@ class App:
                 self.view, self.gid = None, ""
                 self.add_line("sys", "— 대기실로 돌아왔어요 —")
         elif t == "view":
+            self.my_ready = False                     # 게임이 시작되면 준비 상태 초기화
             to, gid = m.get("to"), m.get("gid")
             if to == self.me:
                 self.personal = gid
@@ -1072,8 +1095,9 @@ class App:
         elif lb:
             mem = lb.get("members", [])
             total = max(lb.get("total", 0), len(mem), core.MIN_PLAYERS)
-            rows = [dict(id=m["id"], n=m["nick"], ai=False, a=True, c=core.COLORS[i % 12], r=None, tag=None,
-                         host=m["id"] == lb.get("host")) for i, m in enumerate(mem)]
+            rows = [dict(id=m["id"], n=m["nick"], ai=False, a=True, c=core.COLORS[i % 12], r=None,
+                         tag=None if m["id"] == lb.get("host") else ("✅ 준비" if m.get("rdy") else "⏳ 준비 전"),
+                         rdy=bool(m.get("rdy")), host=m["id"] == lb.get("host")) for i, m in enumerate(mem)]
             rows += [dict(id=None, n="AI", ai=True, a=True, c=SOFT, r=None, tag=None, ghost=True)
                      for _ in range(total - len(mem))]
         n = len(rows)
@@ -1125,7 +1149,8 @@ class App:
                     cv.create_oval(cx + R - self.px(4), cy - R - self.px(3), cx + R + self.px(10), cy - R + self.px(11),
                                    fill=RED, outline="")
                     cv.create_text(cx + R + self.px(3), cy - R + self.px(4), text=str(p["v"]), font=self.f(8, True), fill="white")
-                if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")):
+                if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")) \
+                        or (not v and p.get("rdy") and not p.get("host")):
                     cv.create_text(cx - R - self.px(3), cy + R - self.px(3), text="✔", font=self.f(8, True), fill="#2f9e44")
                 self.cells.append((pid, cx, cy, R + self.px(8)))
                 continue
@@ -1148,7 +1173,8 @@ class App:
                 bx, by = cx - R + self.px(2), cy - R + self.px(2)
                 cv.create_oval(bx - self.px(10), by - self.px(10), bx + self.px(10), by + self.px(10), fill=RED, outline="")
                 cv.create_text(bx, by, text=str(p["v"]), font=self.f(9, True), fill="white")
-            if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")):
+            if (v and v["phase"] == "vote" and p.get("voted")) or (v and v["phase"] == "day" and p.get("rd")) \
+                    or (not v and p.get("rdy") and not p.get("host")):
                 cv.create_text(cx + R + self.px(2), cy + R - self.px(4), text="✔", font=self.f(10, True), fill="#2f9e44")
             self.cells.append((pid, cx, cy, R + self.px(10)))
 
@@ -1328,12 +1354,20 @@ class App:
                 total = self.host.total
                 hs = len(self.host.humans())
                 hint = f"사람 {hs}명 + AI {max(0, max(total, core.MIN_PLAYERS) - hs)}명  ·  총 인원과 직업(📋 직업판)을 정하세요"
+                wait = self.host.waiting()
+                if wait:
+                    names = ", ".join(self.host.nick_of(w) for w in wait[:3]) + (" 외" if len(wait) > 3 else "")
+                    hint = f"⏳ 준비 기다리는 중: {names}  ·  모두 준비하면 시작할 수 있어요"
+                start = (f"준비 {hs - 1 - len(wait)}/{hs - 1}", None, None) if wait else ("게임 시작 ▶", self.host_start, ACCENT)
                 btns = [("−", lambda: self.set_total(-1), SOFT), (f"총 {max(total, hs)}명", None, None),
-                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT),
-                        ("게임 시작 ▶", self.host_start, ACCENT)]
+                        ("+", lambda: self.set_total(1), SOFT), ("📋 직업판", self.open_board, SOFT), start]
             else:
-                hint = "채팅으로 인사하며 기다려요 👋  ·  직업을 누르면 특성을 볼 수 있어요"
-                btns = [("📋 직업판 보기", self.open_board, SOFT)]
+                if self.my_ready:
+                    hint = "✅ 준비 완료! 방장이 시작하길 기다려요"
+                    btns = [("📋 직업판 보기", self.open_board, SOFT), ("준비 취소", self.toggle_ready, SOFT)]
+                else:
+                    hint = "준비 버튼을 눌러 주세요 👋  ·  모두 준비해야 방장이 시작할 수 있어요"
+                    btns = [("📋 직업판 보기", self.open_board, SOFT), ("✅ 준비", self.toggle_ready, ACCENT)]
         elif ph == "night":
             if me.get("act"):
                 if me.get("picked") and not (me["role"] in ("마피아", "의사")):
@@ -1517,7 +1551,8 @@ class App:
         self._act_key = None
 
     def host_start(self):
-        self.host.start()
+        if not self.host.start():
+            self.add_line("priv", "아직 준비 안 한 사람이 있어요.")
         self._act_key = None
 
     def host_lobby(self):

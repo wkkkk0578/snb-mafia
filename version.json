@@ -1,8 +1,8 @@
 {
- "version": 12,
- "note": "AI가 조용해지지 않게: Claude 실패 시 기본 대사 · 정적 12초면 AI가 먼저 말 걸기",
+ "version": 13,
+ "note": "대기실 준비 버튼: 모두 준비해야 방장이 시작",
  "files": {
-  "mafia.py": "bea8d564e293cc94f9d194666f1e98444b7b66bc16f50155ded8d758a5f70c2c",
+  "mafia.py": "efecab9e36f990cd37113ba73a2ab6e877dd74e5fee1c8d729584fc5ada66a34",
   "mafia_core.py": "b81742cb1981e9e36d8074b7ba3f96e2fe654cf8e5767d0c0c6575c39b169826",
   "desk.py": "f65816d951a50a781a5e99b8b367d2a21875a577ccba85142540cd05cd57b4d8",
   "launcher.py": "15435bfff37e642829c67a8b2482b04b2d375d8240eaa7489ff8de4efeb4cd37",
